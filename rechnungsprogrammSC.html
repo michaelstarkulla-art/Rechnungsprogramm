@@ -1,0 +1,2565 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rechnungsprogramm</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.3/jspdf.plugin.autotable.min.js"></script>
+  <script>
+/* ═══════════════════════════════════════════════════════════════════════════════
+ * PROPERTY OF Michael Starkulla - ALL RIGHTS RESERVED.
+ * Dieses Programm ist urheberrechtlich geschützt. 
+ * Die unbefugte Vervielfältigung, Verbreitung oder Dekompilierung 
+ * dieses Codes ist untersagt. 
+ * Kontakt für Nutzungslizenzen: michael.starkulla@gmail.com
+ * ═══════════════════════════════════════════════════════════════════════════════ */
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FORENSISCH SICHERES KRYPTO-MODUL - Eingebettet für lokale Nutzung
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Globales Datenobjekt - alle Anwendungsdaten werden hier gehalten
+const appData = {
+  kunden: [],
+  material: [],
+  rechnungen: [],
+  angebote: [],
+  einstellungen: [],
+  _initialized: false
+};
+
+// Krypto-Konfiguration
+const CRYPTO_CONFIG = {
+  algorithm: 'AES-GCM',
+  keyLength: 256,
+  ivLength: 12,
+  saltLength: 16,
+  iterations: 100000,
+  tagLength: 128
+};
+
+function generateRandomBytes(length) {
+  return crypto.getRandomValues(new Uint8Array(length));
+}
+
+async function deriveKey(password, salt) {
+  const encoder = new TextEncoder();
+  const passwordBuffer = encoder.encode(password);
+  const baseKey = await crypto.subtle.importKey('raw', passwordBuffer, 'PBKDF2', false, ['deriveKey']);
+  return await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt, iterations: CRYPTO_CONFIG.iterations, hash: 'SHA-256' },
+    baseKey,
+    { name: CRYPTO_CONFIG.algorithm, length: CRYPTO_CONFIG.keyLength },
+    false, ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptData(data, password) {
+  const jsonString = JSON.stringify(data);
+  const encoder = new TextEncoder();
+  const dataBuffer = encoder.encode(jsonString);
+  const salt = generateRandomBytes(CRYPTO_CONFIG.saltLength);
+  const iv = generateRandomBytes(CRYPTO_CONFIG.ivLength);
+  const key = await deriveKey(password, salt);
+  const encryptedData = await crypto.subtle.encrypt(
+    { name: CRYPTO_CONFIG.algorithm, iv: iv, tagLength: CRYPTO_CONFIG.tagLength },
+    key, dataBuffer
+  );
+  const result = new Uint8Array(CRYPTO_CONFIG.saltLength + CRYPTO_CONFIG.ivLength + encryptedData.byteLength);
+  result.set(salt, 0);
+  result.set(iv, CRYPTO_CONFIG.saltLength);
+  result.set(new Uint8Array(encryptedData), CRYPTO_CONFIG.saltLength + CRYPTO_CONFIG.ivLength);
+  return result.buffer;
+}
+
+async function decryptData(encryptedBuffer, password) {
+  const encryptedArray = new Uint8Array(encryptedBuffer);
+  const salt = encryptedArray.slice(0, CRYPTO_CONFIG.saltLength);
+  const iv = encryptedArray.slice(CRYPTO_CONFIG.saltLength, CRYPTO_CONFIG.saltLength + CRYPTO_CONFIG.ivLength);
+  const ciphertext = encryptedArray.slice(CRYPTO_CONFIG.saltLength + CRYPTO_CONFIG.ivLength);
+  const key = await deriveKey(password, salt);
+  const decryptedBuffer = await crypto.subtle.decrypt(
+    { name: CRYPTO_CONFIG.algorithm, iv: iv, tagLength: CRYPTO_CONFIG.tagLength },
+    key, ciphertext
+  );
+  const decoder = new TextDecoder();
+  return JSON.parse(decoder.decode(decryptedBuffer));
+}
+
+async function exportEncrypted(password, filename = null) {
+  if (!password || password.length < 8) throw new Error('Passwort muss mindestens 8 Zeichen lang sein');
+  const exportData = {
+    version: 4, format: 'encrypted-aes-gcm', date: new Date().toISOString(),
+    kunden: appData.kunden, material: appData.material, rechnungen: appData.rechnungen,
+    angebote: appData.angebote, einstellungen: appData.einstellungen
+  };
+  const encryptedBuffer = await encryptData(exportData, password);
+  const blob = new Blob([encryptedBuffer], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || `backup-encrypted-${new Date().toISOString().slice(0, 10)}.enc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function importEncrypted(file, password) {
+  if (!password) throw new Error('Passwort erforderlich');
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const decryptedData = await decryptData(e.target.result, password);
+        if (!decryptedData.kunden || !decryptedData.material) throw new Error('Ungültiges Datenformat');
+        loadDataIntoRAM(decryptedData);
+        resolve(true);
+      } catch (error) { reject(error); }
+    };
+    reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function loadDataIntoRAM(data) {
+  wipeArray(appData.kunden); wipeArray(appData.material); wipeArray(appData.rechnungen);
+  wipeArray(appData.angebote); wipeArray(appData.einstellungen);
+  appData.kunden = data.kunden || [];
+  appData.material = data.material || [];
+  appData.rechnungen = data.rechnungen || [];
+  appData.angebote = data.angebote || [];
+  appData.einstellungen = data.einstellungen || [];
+  appData._initialized = true;
+}
+
+function wipeArray(arr) {
+  if (!Array.isArray(arr)) return;
+  for (let i = 0; i < arr.length; i++) {
+    if (typeof arr[i] === 'object' && arr[i] !== null) wipeObject(arr[i]);
+    arr[i] = null;
+  }
+  arr.length = 0;
+}
+
+function wipeObject(obj) {
+  if (typeof obj !== 'object' || obj === null) return;
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      if (typeof obj[key] === 'string') obj[key] = ''.padStart(obj[key].length, '0');
+      else if (typeof obj[key] === 'object' && obj[key] !== null) {
+        if (Array.isArray(obj[key])) wipeArray(obj[key]); else wipeObject(obj[key]);
+      }
+      obj[key] = null; delete obj[key];
+    }
+  }
+}
+
+function wipeRAM(reload = true) {
+  console.log('🔒 RAM-Wiping...');
+  wipeArray(appData.kunden); wipeArray(appData.material); wipeArray(appData.rechnungen);
+  wipeArray(appData.angebote); wipeArray(appData.einstellungen);
+  appData._initialized = false;
+  for (let pass = 0; pass < 3; pass++) {
+    appData.kunden = []; appData.material = []; appData.rechnungen = [];
+    appData.angebote = []; appData.einstellungen = [];
+  }
+  if (reload) window.location.reload();
+}
+
+function checkPasswordStrength(password) {
+  const result = { score: 0, feedback: [], isStrong: false };
+  if (!password) { result.feedback.push('Passwort erforderlich'); return result; }
+  if (password.length >= 8) result.score++;
+  if (password.length >= 12) result.score++;
+  if (password.length >= 16) result.score++;
+  if (password.length < 8) result.feedback.push('Mindestens 8 Zeichen');
+  if (/[a-z]/.test(password)) result.score++; else result.feedback.push('Kleinbuchstaben');
+  if (/[A-Z]/.test(password)) result.score++; else result.feedback.push('Großbuchstaben');
+  if (/[0-9]/.test(password)) result.score++; else result.feedback.push('Zahlen');
+  if (/[^a-zA-Z0-9]/.test(password)) result.score++; else result.feedback.push('Sonderzeichen');
+  result.isStrong = result.score >= 5;
+  return result;
+}
+
+let _migrationCompleted = false;
+
+async function checkDatabaseExists(dbName) {
+  return new Promise((resolve) => {
+    const request = indexedDB.open(dbName);
+    let existed = true;
+    request.onupgradeneeded = (e) => { existed = false; e.target.transaction.abort(); };
+    request.onsuccess = (e) => {
+      e.target.result.close();
+      if (!existed) indexedDB.deleteDatabase(dbName);
+      resolve(existed);
+    };
+    request.onerror = () => resolve(false);
+  });
+}
+
+async function readAllFromIndexedDB(dbName) {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(dbName);
+    request.onerror = () => reject(new Error('DB nicht geöffnet'));
+    request.onsuccess = (e) => {
+      const db = e.target.result;
+      const storeNames = Array.from(db.objectStoreNames);
+      const data = {};
+      if (storeNames.length === 0) { db.close(); resolve(data); return; }
+      let completed = 0;
+      storeNames.forEach(storeName => {
+        try {
+          const tx = db.transaction(storeName, 'readonly');
+          const getRequest = tx.objectStore(storeName).getAll();
+          getRequest.onsuccess = () => { data[storeName] = getRequest.result || []; completed++; if (completed === storeNames.length) { db.close(); resolve(data); } };
+          getRequest.onerror = () => { data[storeName] = []; completed++; if (completed === storeNames.length) { db.close(); resolve(data); } };
+        } catch (err) { data[storeName] = []; completed++; if (completed === storeNames.length) { db.close(); resolve(data); } }
+      });
+    };
+  });
+}
+
+async function deleteIndexedDB(dbName) {
+  return new Promise((resolve) => {
+    const request = indexedDB.deleteDatabase(dbName);
+    request.onsuccess = () => resolve(true);
+    request.onerror = () => resolve(false);
+    request.onblocked = () => resolve(true);
+  });
+}
+
+async function migrateAndDestroy() {
+  const DB_NAME = 'RechnungDB';
+  if (_migrationCompleted) return false;
+  const dbExists = await checkDatabaseExists(DB_NAME);
+  if (!dbExists) { _migrationCompleted = true; return false; }
+  try {
+    const dbData = await readAllFromIndexedDB(DB_NAME);
+    const hasData = Object.values(dbData).some(arr => arr && arr.length > 0);
+    if (!hasData) { await deleteIndexedDB(DB_NAME); _migrationCompleted = true; return true; }
+    loadDataIntoRAM({
+      kunden: dbData.kunden || [], material: dbData.material || [],
+      rechnungen: dbData.rechnungen || [], angebote: dbData.angebote || [],
+      einstellungen: dbData.einstellungen || []
+    });
+    // Daten sind geladen, Migration Dialog würde hier kommen - für jetzt einfach löschen
+    await deleteIndexedDB(DB_NAME);
+    _migrationCompleted = true;
+    return true;
+  } catch (error) {
+    console.error('Migrationsfehler:', error);
+    _migrationCompleted = true;
+    return false;
+  }
+}
+
+async function initCryptoModule() {
+  console.log('🚀 Initialisiere Krypto-Modul...');
+  // Migration deaktiviert - Benutzer hat bereits Backup erstellt
+  // await migrateAndDestroy();
+  console.log('✓ Krypto-Modul bereit (RAM-only)');
+  return appData;
+}
+
+window.CryptoModule = {
+  appData, encryptData, decryptData, exportEncrypted, importEncrypted,
+  loadDataIntoRAM, wipeRAM, wipeArray, wipeObject, checkPasswordStrength,
+  migrateAndDestroy, initCryptoModule, checkDatabaseExists, deleteIndexedDB, CRYPTO_CONFIG
+};
+
+console.log('🔐 Krypto-Modul geladen (AES-256-GCM, PBKDF2)');
+  </script>
+  <style>
+    @media print {
+      .no-print { display: none !important; }
+      .print-only { display: inline !important; }
+      body { background: white !important; margin: 0; }
+      #rechnung-druck {
+        box-shadow: none !important;
+        background: white !important;
+        margin: 0 !important;
+        padding: 25mm 20mm 45mm 25mm !important;
+      }
+      .page-footer {
+        position: fixed !important;
+        bottom: 12mm !important;
+        left: 25mm !important;
+        right: 20mm !important;
+        height: 28mm;
+        margin: 0;
+        padding: 0;
+        font-size: 9pt;
+        color: #444;
+        z-index: 100;
+        background: white;
+        border-top: 1px solid #ccc;
+      }
+      .page-content {
+        padding-bottom: 50mm;
+      }
+      tr { page-break-inside: avoid; }
+    }
+
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #0d9488; border-radius: 10px; }
+    textarea { overflow: hidden; resize: none; min-height: 1.5rem; }
+    .print-only { display: none; }
+    
+    .sidebar-toggle {
+      display: none;
+    }
+    
+    @media (max-width: 768px) {
+      .sidebar-toggle {
+        display: block;
+      }
+      
+      .app-container {
+        position: relative;
+      }
+      
+      .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        height: 100vh;
+        z-index: 40;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease-in-out;
+      }
+      
+      .sidebar.open {
+        transform: translateX(0);
+      }
+      
+      .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 30;
+      }
+      
+      .sidebar-backdrop.open {
+        display: block;
+      }
+      
+      .main-content {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 font-sans antialiased">
+
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// RAM-BASIERTE ARCHITEKTUR - Keine IndexedDB, alle Daten nur im Arbeitsspeicher
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Prüfen ob CryptoModule geladen ist
+if (!window.CryptoModule) {
+  console.error('FEHLER: CryptoModule nicht gefunden! Stellen Sie sicher, dass das Crypto-Script vor diesem Script geladen wird.');
+}
+
+// Referenz zum globalen CryptoModule (Funktionen werden direkt verwendet)
+const CryptoModule = window.CryptoModule || {
+  appData: { kunden: [], material: [], rechnungen: [], angebote: [], einstellungen: [], _initialized: false },
+  exportEncrypted: async () => { throw new Error('CryptoModule nicht geladen'); },
+  importEncrypted: async () => { throw new Error('CryptoModule nicht geladen'); },
+  wipeRAM: () => { console.warn('wipeRAM nicht verfügbar'); },
+  checkPasswordStrength: () => ({ score: 0, feedback: [], isStrong: false }),
+  initCryptoModule: async () => ({})
+};
+
+// Direkte Referenzen für einfacheren Zugriff (nutzen das globale appData)
+const { exportEncrypted, importEncrypted, wipeRAM, checkPasswordStrength, initCryptoModule } = CryptoModule;
+// appData wird NICHT neu definiert - wir nutzen window.CryptoModule.appData direkt
+
+// Passwort-Dialog für verschlüsselten Export anzeigen
+const showExportPasswordDialog = () => {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.id = 'export-overlay';
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.85); display: flex; align-items: center;
+      justify-content: center; z-index: 99999;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+    overlay.innerHTML = `
+      <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 2px solid #0d9488; border-radius: 16px; padding: 32px;
+        max-width: 450px; width: 90%; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <div style="font-size: 40px; margin-bottom: 12px;">🔐</div>
+          <h2 style="color: #f8fafc; margin: 0 0 8px 0; font-size: 20px;">Verschlüsselter Export</h2>
+          <p style="color: #94a3b8; margin: 0; font-size: 13px;">Vergeben Sie ein sicheres Passwort für die Backup-Datei.</p>
+        </div>
+        <div style="background: #334155; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+          <label style="display: block; color: #e2e8f0; font-size: 12px; margin-bottom: 6px; font-weight: 600;">Passwort:</label>
+          <input type="password" id="export-pw" placeholder="Mindestens 8 Zeichen..."
+            style="width: 100%; padding: 10px 14px; border: 2px solid #475569; border-radius: 8px;
+              background: #1e293b; color: #f8fafc; font-size: 15px; box-sizing: border-box; outline: none;" />
+          <div id="pw-strength" style="margin-top: 6px; font-size: 11px; color: #94a3b8;"></div>
+          <label style="display: block; color: #e2e8f0; font-size: 12px; margin: 12px 0 6px 0; font-weight: 600;">Bestätigen:</label>
+          <input type="password" id="export-pw-confirm" placeholder="Passwort wiederholen..."
+            style="width: 100%; padding: 10px 14px; border: 2px solid #475569; border-radius: 8px;
+              background: #1e293b; color: #f8fafc; font-size: 15px; box-sizing: border-box; outline: none;" />
+          <div id="pw-match" style="margin-top: 6px; font-size: 11px; color: #94a3b8;"></div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button id="export-cancel" style="flex: 1; padding: 12px; background: #475569; border: none;
+            border-radius: 8px; color: #e2e8f0; font-size: 13px; font-weight: 600; cursor: pointer;">Abbrechen</button>
+          <button id="export-confirm" disabled style="flex: 2; padding: 12px;
+            background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); border: none; border-radius: 8px;
+            color: white; font-size: 13px; font-weight: 600; cursor: pointer; opacity: 0.5;">🔒 Exportieren</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    const pwInput = document.getElementById('export-pw');
+    const confirmInput = document.getElementById('export-pw-confirm');
+    const strengthDiv = document.getElementById('pw-strength');
+    const matchDiv = document.getElementById('pw-match');
+    const confirmBtn = document.getElementById('export-confirm');
+    const cancelBtn = document.getElementById('export-cancel');
+    
+    const validate = () => {
+      const pw = pwInput.value;
+      const confirm = confirmInput.value;
+      const strength = checkPasswordStrength(pw);
+      if (pw.length > 0) {
+        const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#10b981'];
+        const labels = ['Sehr schwach', 'Schwach', 'Mittel', 'Stark', 'Sehr stark'];
+        const idx = Math.min(Math.floor(strength.score / 2), 4);
+        strengthDiv.innerHTML = `<span style="color: ${colors[idx]};">● ${labels[idx]}</span>`;
+      } else { strengthDiv.innerHTML = ''; }
+      if (confirm.length > 0) {
+        matchDiv.innerHTML = pw === confirm 
+          ? '<span style="color: #22c55e;">✓ Passwörter stimmen überein</span>'
+          : '<span style="color: #ef4444;">✗ Passwörter stimmen nicht überein</span>';
+      } else { matchDiv.innerHTML = ''; }
+      const valid = pw.length >= 8 && pw === confirm;
+      confirmBtn.disabled = !valid;
+      confirmBtn.style.opacity = valid ? '1' : '0.5';
+    };
+    pwInput.addEventListener('input', validate);
+    confirmInput.addEventListener('input', validate);
+    setTimeout(() => pwInput.focus(), 100);
+    
+    const handleKey = (e) => { if (e.key === 'Enter' && !confirmBtn.disabled) confirmBtn.click(); else if (e.key === 'Escape') cancelBtn.click(); };
+    pwInput.addEventListener('keydown', handleKey);
+    confirmInput.addEventListener('keydown', handleKey);
+    
+    confirmBtn.addEventListener('click', () => { overlay.remove(); resolve(pwInput.value); });
+    cancelBtn.addEventListener('click', () => { overlay.remove(); resolve(null); });
+  });
+};
+
+// Passwort-Dialog für verschlüsselten Import anzeigen
+const showImportPasswordDialog = () => {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.85); display: flex; align-items: center;
+      justify-content: center; z-index: 99999;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+    overlay.innerHTML = `
+      <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 2px solid #3b82f6; border-radius: 16px; padding: 32px;
+        max-width: 400px; width: 90%; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <div style="font-size: 40px; margin-bottom: 12px;">🔓</div>
+          <h2 style="color: #f8fafc; margin: 0 0 8px 0; font-size: 20px;">Backup entschlüsseln</h2>
+          <p style="color: #94a3b8; margin: 0; font-size: 13px;">Geben Sie das Passwort für die Backup-Datei ein.</p>
+        </div>
+        <div style="background: #334155; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+          <input type="password" id="import-pw" placeholder="Passwort eingeben..."
+            style="width: 100%; padding: 12px 14px; border: 2px solid #475569; border-radius: 8px;
+              background: #1e293b; color: #f8fafc; font-size: 15px; box-sizing: border-box; outline: none;" />
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button id="import-cancel" style="flex: 1; padding: 12px; background: #475569; border: none;
+            border-radius: 8px; color: #e2e8f0; font-size: 13px; font-weight: 600; cursor: pointer;">Abbrechen</button>
+          <button id="import-confirm" style="flex: 2; padding: 12px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border: none; border-radius: 8px;
+            color: white; font-size: 13px; font-weight: 600; cursor: pointer;">🔓 Entschlüsseln</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    const pwInput = document.getElementById('import-pw');
+    const confirmBtn = document.getElementById('import-confirm');
+    const cancelBtn = document.getElementById('import-cancel');
+    
+    setTimeout(() => pwInput.focus(), 100);
+    pwInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') confirmBtn.click(); else if (e.key === 'Escape') cancelBtn.click(); });
+    confirmBtn.addEventListener('click', () => { overlay.remove(); resolve(pwInput.value); });
+    cancelBtn.addEventListener('click', () => { overlay.remove(); resolve(null); });
+  });
+};
+
+// Sitzung sicher beenden - Bestätigungsdialog
+const confirmSecureWipe = () => {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.85); display: flex; align-items: center;
+      justify-content: center; z-index: 99999;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+    overlay.innerHTML = `
+      <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 2px solid #dc2626; border-radius: 16px; padding: 32px;
+        max-width: 450px; width: 90%; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <div style="font-size: 48px; margin-bottom: 12px;">🔒</div>
+          <h2 style="color: #fca5a5; margin: 0 0 8px 0; font-size: 20px;">Sitzung sicher beenden?</h2>
+          <p style="color: #94a3b8; margin: 0; font-size: 13px; line-height: 1.5;">
+            Alle Daten im Arbeitsspeicher werden <strong style="color: #f8fafc;">unwiderruflich gelöscht</strong>.<br>
+            Stellen Sie sicher, dass Sie ein verschlüsseltes Backup erstellt haben!
+          </p>
+        </div>
+        <div style="background: #7c2d12; border: 1px solid #ea580c; border-radius: 8px; padding: 12px; margin-bottom: 20px;">
+          <div style="display: flex; align-items: flex-start; gap: 10px;">
+            <span style="font-size: 18px;">⚠️</span>
+            <div style="color: #fed7aa; font-size: 12px; line-height: 1.4;">
+              <strong style="color: #fb923c;">RAM-Wiping:</strong> Alle Variablen werden mit Null-Werten überschrieben.
+              Die Seite wird danach automatisch neu geladen.
+            </div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button id="wipe-cancel" style="flex: 1; padding: 12px; background: #475569; border: none;
+            border-radius: 8px; color: #e2e8f0; font-size: 13px; font-weight: 600; cursor: pointer;">Abbrechen</button>
+          <button id="wipe-confirm" style="flex: 1; padding: 12px;
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); border: none; border-radius: 8px;
+            color: white; font-size: 13px; font-weight: 600; cursor: pointer;">🗑️ Sitzung beenden</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    
+    document.getElementById('wipe-confirm').addEventListener('click', () => { overlay.remove(); resolve(true); });
+    document.getElementById('wipe-cancel').addEventListener('click', () => { overlay.remove(); resolve(false); });
+  });
+};
+
+function App() {
+  const [db, setDb] = useState({ kunden: [], material: [] });
+  const [rechnungen, setRechnungen] = useState([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [activeTab, setActiveTab] = useState("material");
+  const [suchTerm, setSuchTerm] = useState("");
+  const [dokSuchTerm, setDokSuchTerm] = useState("");
+  const [musterFilter, setMusterFilter] = useState(false);
+  const [belegSort, setBelegSort] = useState("datum-desc");
+  const [dokTypFilter, setDokTypFilter] = useState("alle");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [neuMat, setNeuMat] = useState({ name: "", einheit: "Stk", preis: "0,00" });
+  const [neuKunde, setNeuKunde] = useState({ anrede: "Organisation", name: "", strasse: "", plz: "", ort: "" });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [clickedMaterial, setClickedMaterial] = useState(null);
+  const [clickedKunde, setClickedKunde] = useState(null);
+  const [hasUnsavedData, setHasUnsavedData] = useState(false);
+  const [lastExportTime, setLastExportTime] = useState(null);
+  
+  // Firmeneinstellungen - Default-Werte, werden aus IndexedDB geladen
+  const defaultFirmenDaten = {
+    id: 1,
+    firmenname: "Musterfirma GmbH",
+    logo: "",
+    logoPosition: "links", // links, mitte, rechts
+    logoBreite: 40,
+    logoHoehe: 15,
+    inhaberName: "Max Mustermann",
+    strasse: "Musterstraße 1",
+    plz: "12345",
+    ort: "Musterstadt",
+    land: "Deutschland",
+    telefon: "+49 123 456789",
+    email: "info@musterfirma.de",
+    website: "www.musterfirma.de",
+    steuernummer: "123/456/78901",
+    bankName: "Musterbank",
+    iban: "DE12345678901234567890",
+    bic: "MUSTDEFF",
+    primaerFarbe: "#006666",
+    briefkopfFarbe: "#444444",
+    briefkopfAbsender: "inhaber", // "inhaber" oder "firmenname"
+    zahlungsziel: 10,
+    angebotsgueltigkeit: 30,
+    stundensatz: 59,
+    angebotHinweis: "Unvorhergesehene Arbeiten werden mit {stundensatz},- €/Std. abgerechnet."
+  };
+  const [firmenDaten, setFirmenDaten] = useState(defaultFirmenDaten);
+  const logoInputRef = React.useRef(null);
+  const [aktivesDok, setAktivesDok] = useState({
+    id: null,
+    typ: "RECHNUNG",
+    nummer: "",
+    datum: new Date().toLocaleDateString('de-DE'),
+    leistungszeitraum: { von: "", bis: "" },
+    kunde: { name: "", strasse: "", plz: "", ort: "" },
+    positionen: [],
+    abschlag: "0",
+    muster: false,
+    arbeitsort: "",
+    abschlagsrechnungBetrag: "0",
+    rabatt: "0",
+    rabattBeschreibung: "Nachlass",
+    betreff: "",
+    freitext: "",
+    signaturKunde: false,
+    signaturAbsender: false,
+    signaturAbsenderData: "",
+    signaturAbsenderOrt: "",
+    signaturAbsenderDatum: "",
+    rechnungshinweis: ""
+  });
+
+  // Signatur-Canvas Refs und Funktionen
+  const signaturCanvasRef = React.useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+
+  const startDrawing = (e) => {
+    const canvas = signaturCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
+    const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing) return;
+    const canvas = signaturCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
+    const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (isDrawing) {
+      setIsDrawing(false);
+      const canvas = signaturCanvasRef.current;
+      if (canvas) {
+        const dataUrl = canvas.toDataURL('image/png');
+        setAktivesDok(prev => ({...prev, signaturAbsenderData: dataUrl}));
+      }
+    }
+  };
+
+  const clearSignaturCanvas = () => {
+    const canvas = signaturCanvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      setAktivesDok(prev => ({...prev, signaturAbsenderData: ''}));
+    }
+  };
+
+  // Firmeneinstellungen speichern (nur im RAM)
+  const saveFirmenDaten = (newData) => {
+    const dataWithId = { ...newData, id: 1 };
+    setFirmenDaten(dataWithId);
+    // Sync mit globalem appData
+    appData.einstellungen = [dataWithId];
+  };
+
+  // Nach Import: React-State aus appData aktualisieren
+  const refreshFromAppData = () => {
+    const k = appData.kunden || [];
+    const m = appData.material || [];
+    const r = appData.rechnungen || [];
+    const a = appData.angebote || [];
+    const einst = appData.einstellungen || [];
+    
+    if (einst && einst.length > 0) {
+      setFirmenDaten({ ...defaultFirmenDaten, ...einst[0] });
+    }
+    
+    setDb({ kunden: k.map(x => ({ ...x, anrede: übersetzeAnrede(x.anrede) })), material: m });
+    setRechnungen([...r, ...a]);
+  };
+
+  // Logo hochladen
+  const handleLogoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      saveFirmenDaten({...firmenDaten, logo: ev.target.result});
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const übersetzeAnrede = w => {
+    w = (w || "").toLowerCase().trim();
+    if (w.includes('herr') || w === 'm') return "Herr";
+    if (w.includes('frau') || w === 'w') return "Frau";
+    return "Organisation";
+  };
+
+  // Zeige Namen wie sie sind
+  const korrigiereName = (name, isOrganisation = false) => {
+    return name;
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        // Migration prüfen und ggf. durchführen (einmalig)
+        await initCryptoModule();
+        
+        // Daten aus globalem appData laden (RAM-basiert)
+        const k = appData.kunden || [];
+        const m = appData.material || [];
+        const r = appData.rechnungen || [];
+        const a = appData.angebote || [];
+        const einst = appData.einstellungen || [];
+        
+        // Firmeneinstellungen laden
+        if (einst && einst.length > 0) {
+          setFirmenDaten({ ...defaultFirmenDaten, ...einst[0] });
+        }
+        
+        const newDb = { kunden: k.map(x => ({ ...x, anrede: übersetzeAnrede(x.anrede) })), material: m };
+        setDb(newDb);
+        // Kombiniere Rechnungen und Angebote für die Anzeige
+        const allDocs = [...r, ...a];
+        setRechnungen(allDocs);
+        setIsLoaded(true);
+        
+        // Generiere vorgeschlagene Rechnungsnummer beim ersten Laden
+        const prefix = "RE";
+        const existing = allDocs
+          .filter(d => d.typ === "RECHNUNG" && !d.muster)
+          .map(d => {
+            const match = d.nummer.match(/RE-(\d+)/);
+            return match ? parseInt(match[1], 10) : 0;
+          });
+        const nextNum = existing.length ? Math.max(...existing) + 1 : 1;
+        const suggestedNumber = `${prefix}-${nextNum.toString().padStart(4, '0')}`;
+        
+        setAktivesDok(prev => ({...prev, nummer: suggestedNumber}));
+      } catch (err) {
+        console.error("Initialisierungsfehler:", err);
+        setIsLoaded(true);
+      }
+    })();
+  }, []);
+
+  // Automatisch neue Nummer vorschlagen, wenn Dokumenttyp geändert wird
+  useEffect(() => {
+    if (!isLoaded || aktivesDok.id) return; // Nur bei neuen Dokumenten
+    
+    const prefix = aktivesDok.typ === "ANGEBOT" ? "AN" : aktivesDok.typ === "ABSCHLAGSRECHNUNG" ? "AR" : aktivesDok.typ === "LEERES_DOKUMENT" ? "LD" : "RE";
+    const existing = rechnungen
+      .filter(d => d.typ === aktivesDok.typ && !d.muster)
+      .map(d => {
+        const match = d.nummer.match(new RegExp(`${prefix}-(\\d+)`));
+        return match ? parseInt(match[1], 10) : 0;
+      });
+    const nextNum = existing.length ? Math.max(...existing) + 1 : 1;
+    const suggestedNumber = `${prefix}-${nextNum.toString().padStart(4, '0')}`;
+    
+    setAktivesDok(prev => ({...prev, nummer: suggestedNumber}));
+  }, [aktivesDok.typ, isLoaded]);
+
+  // Warnung beim Verlassen der Seite (beforeunload)
+  useEffect(() => {
+    const hasData = () => {
+      return (appData.kunden?.length > 0 || 
+              appData.material?.length > 0 || 
+              appData.rechnungen?.length > 0 || 
+              appData.angebote?.length > 0);
+    };
+
+    const handleBeforeUnload = (e) => {
+      if (hasData()) {
+        e.preventDefault();
+        e.returnValue = '⚠️ Alle Daten im RAM gehen verloren! Haben Sie ein Backup exportiert?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
+  const saveToDB = (ndb) => {
+    setDb(ndb);
+    // Sync mit globalem appData (RAM-basiert)
+    appData.kunden = ndb.kunden;
+    appData.material = ndb.material;
+    setHasUnsavedData(true);
+  };
+
+  const generateNextNumber = () => {
+    const prefix = aktivesDok.typ === "ANGEBOT" ? "AN" : aktivesDok.typ === "ABSCHLAGSRECHNUNG" ? "AR" : aktivesDok.typ === "LEERES_DOKUMENT" ? "LD" : "RE";
+    const existing = rechnungen
+      .filter(d => d.typ === aktivesDok.typ && !d.muster)
+      .map(d => {
+        const match = d.nummer.match(new RegExp(`${prefix}-(\\d+)`));
+        return match ? parseInt(match[1], 10) : 0;
+      });
+    const next = existing.length ? Math.max(...existing) + 1 : 1;
+    return `${prefix}-${next.toString().padStart(4, '0')}`;
+  };
+
+  const generateMusterNumber = () => {
+    const prefix = aktivesDok.typ === "ANGEBOT" ? "AN" : aktivesDok.typ === "ABSCHLAGSRECHNUNG" ? "AR" : aktivesDok.typ === "LEERES_DOKUMENT" ? "LD" : "RE";
+    const count = rechnungen.filter(d => d.muster && d.typ === aktivesDok.typ).length + 1;
+    return `M-${prefix}-${count.toString().padStart(3, '0')}`;
+  };
+
+  const saveDok = (forceMuster = false) => {
+    // Wenn ein Muster bearbeitet wird und NICHT als Muster gespeichert werden soll,
+    // erstelle ein neues Dokument (Muster bleibt unverändert)
+    const isEditingMuster = aktivesDok.muster && !forceMuster;
+    
+    let nr = aktivesDok.nummer.trim();
+    
+    if (isEditingMuster) {
+      // Muster wird als neues normales Dokument gespeichert
+      nr = generateNextNumber(); // Neue Nummer generieren
+    } else if (!nr) {
+      nr = forceMuster ? generateMusterNumber() : generateNextNumber();
+    }
+    
+    const neu = {
+      ...aktivesDok,
+      // Bei Muster-Bearbeitung: neue ID erstellen, sonst bestehende oder neue
+      id: isEditingMuster ? Date.now() : (aktivesDok.id || Date.now()),
+      nummer: nr,
+      // Bei Muster-Bearbeitung: muster auf false setzen
+      muster: isEditingMuster ? false : (forceMuster || aktivesDok.muster)
+    };
+    
+    // Bei Muster-Bearbeitung: neues Dokument hinzufügen (Muster bleibt erhalten)
+    // Sonst: existierendes aktualisieren oder neues hinzufügen
+    const updated = isEditingMuster
+      ? [...rechnungen, neu]  // Neues Dokument hinzufügen, Muster bleibt
+      : (aktivesDok.id && !aktivesDok.muster)
+        ? rechnungen.map(d => d.id === aktivesDok.id ? neu : d)
+        : [...rechnungen, neu];
+    
+    setRechnungen(updated);
+    // Aktualisiere auch aktivesDok mit der neuen ID
+    setAktivesDok(neu);
+    
+    // Sync mit globalem appData (RAM-basiert)
+    appData.rechnungen = updated.filter(d => d.typ !== "ANGEBOT");
+    appData.angebote = updated.filter(d => d.typ === "ANGEBOT");
+    setHasUnsavedData(true);
+    
+    if (neu.muster) setMusterFilter(true);
+    if (isEditingMuster) setMusterFilter(false); // Zeige normale Dokumente nach Muster-Konvertierung
+    // Kein Alert mehr - Daten sind nur im RAM
+  };
+
+  const loadDok = d => setAktivesDok(d);
+
+  const newDok = () => {
+    // Generiere vorgeschlagene Nummer basierend auf Dokumenttyp
+    const prefix = "RE";
+    const existing = rechnungen
+      .filter(d => d.typ === "RECHNUNG" && !d.muster)
+      .map(d => {
+        const match = d.nummer.match(/RE-(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      });
+    const nextNum = existing.length ? Math.max(...existing) + 1 : 1;
+    const suggestedNumber = `${prefix}-${nextNum.toString().padStart(4, '0')}`;
+    
+    setAktivesDok({
+      id: null,
+      typ: "RECHNUNG",
+      nummer: suggestedNumber,
+      datum: new Date().toLocaleDateString('de-DE'),
+      leistungszeitraum: { von: "", bis: "" },
+      kunde: { name: "", strasse: "", plz: "", ort: "" },
+      positionen: [],
+      abschlag: "0",
+      muster: false,
+      arbeitsort: "",
+      abschlagsrechnungBetrag: "0",
+      rabatt: "0",
+      rabattBeschreibung: "Nachlass"
+    });
+  };
+
+  const copyAsMuster = d => {
+    const kopie = {
+      ...d,
+      id: null,
+      nummer: generateMusterNumber(),
+      datum: new Date().toLocaleDateString('de-DE'),
+      muster: true
+    };
+    setAktivesDok(kopie);
+    saveDok(true);
+  };
+
+  const removeMuster = (d) => {
+    if (!confirm(`Muster ${d.nummer} in normales Dokument umwandeln?`)) return;
+    const updated = rechnungen.map(doc => doc.id === d.id ? {...doc, muster: false} : doc);
+    setRechnungen(updated);
+    
+    // Sync mit globalem appData (RAM-basiert)
+    appData.rechnungen = updated.filter(doc => doc.typ !== "ANGEBOT");
+    appData.angebote = updated.filter(doc => doc.typ === "ANGEBOT");
+    
+    alert(`${d.typ} ${d.nummer} ist jetzt kein Muster mehr`);
+    setMusterFilter(false);
+  };
+
+  const deleteDok = (d) => {
+    if (!confirm(`${d.typ} ${d.nummer} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return;
+    const updated = rechnungen.filter(doc => doc.id !== d.id);
+    setRechnungen(updated);
+    
+    // Sync mit globalem appData (RAM-basiert)
+    appData.rechnungen = updated.filter(doc => doc.typ !== "ANGEBOT");
+    appData.angebote = updated.filter(doc => doc.typ === "ANGEBOT");
+    
+    alert(`${d.typ} ${d.nummer} wurde gelöscht`);
+  };
+
+  const updateStamm = (typ, kundeId, feld, val) => {
+    const arr = [...db[typ]];
+    const idx = arr.findIndex(item => item.id === kundeId);
+    if (idx === -1) return;
+    
+    arr[idx] = { ...arr[idx], [feld]: val };
+    saveToDB({ ...db, [typ]: arr });
+    
+    // Erfolgsmeldung anzeigen (nur Material)
+    if (typ === "material") {
+      setSuccessMessage(`✓ Änderung gespeichert`);
+      setTimeout(() => setSuccessMessage(""), 2000);
+    }
+    
+    // Wenn ein Kunde bearbeitet wird, synchronisiere auch aktivesDok
+    if (typ === "kunden") {
+      const editedKunde = arr[idx];
+      // Prüfe, ob dieser Kunde im aktiven Dokument verwendet wird (anhand des Namens)
+      const kundenName = editedKunde.Organisation || editedKunde.name || "";
+      if (aktivesDok.kunde.name && aktivesDok.kunde.name.includes(kundenName)) {
+        // Aktualisiere die Adresse in aktivesDok
+        setAktivesDok({
+          ...aktivesDok,
+          kunde: {
+            ...aktivesDok.kunde,
+            strasse: editedKunde.Strasse || editedKunde.strasse || "",
+            plz: editedKunde.PLZ || editedKunde.plz || "",
+            ort: editedKunde.Ort || editedKunde.ort || ""
+          }
+        });
+      }
+    }
+  };
+
+  const waehleKunde = k => {
+    const anrede = übersetzeAnrede(k.anrede);
+    const prfx = anrede === "Herr" ? "Herrn " : anrede === "Frau" ? "Frau " : "";
+    const rawName = k.Organisation || k.name || "";
+    const isOrg = !!k.Organisation;
+    const correctedName = korrigiereName(rawName, isOrg);
+    
+    setAktivesDok({
+      ...aktivesDok,
+      kunde: {
+        name: prfx + correctedName,
+        strasse: k.Strasse || k.strasse || "",
+        plz: k.PLZ || k.plz || "",
+        ort: k.Ort || k.ort || ""
+      }
+    });
+  };
+
+  const addPos = m => {
+    setAktivesDok({
+      ...aktivesDok,
+      positionen: [...aktivesDok.positionen, {
+        id: Date.now(),
+        name: m.Name,
+        menge: "1",
+        einheit: m.Einheit,
+        preis: String(m.Verkaufspreis).replace('.', ','),
+        isUeberschrift: false,
+        isOptional: false
+      }]
+    });
+  };
+
+  const parseVal = v => parseFloat(String(v || "0").replace(',', '.') || 0);
+
+  const netto = aktivesDok.positionen.reduce((s, p) => (p.isUeberschrift || p.isOptional) ? s : s + parseVal(p.menge) * parseVal(p.preis), 0);
+  const abschlagProzent = parseVal(aktivesDok.abschlag);
+  const abschlagBetrag = netto * (abschlagProzent / 100);
+  const restNetto = netto - abschlagBetrag;
+  
+  // Rabatt vom Netto abziehen
+  const rabattBetrag = parseVal(aktivesDok.rabatt || "0");
+  const nettoNachRabatt = restNetto - rabattBetrag;
+  
+  // MwSt auf Netto nach Rabatt berechnen
+  const mwst = nettoNachRabatt * 0.19;
+  const restBrutto = nettoNachRabatt + mwst;
+  const brutto = nettoNachRabatt + mwst;
+  
+  // Manuell eingetragener Abschlagsrechnungsbetrag
+  const abschlagsrechnungBetrag = parseVal(aktivesDok.abschlagsrechnungBetrag || "0");
+  const restbetragNachAbschlag = brutto - abschlagsrechnungBetrag;
+
+  const sortedRechnungen = [...rechnungen]
+    .filter(d => musterFilter ? d.muster : !d.muster)
+    .filter(d => {
+      if (dokTypFilter === "alle") return true;
+      if (dokTypFilter === "angebote") return d.typ === "ANGEBOT";
+      if (dokTypFilter === "rechnungen") return d.typ === "RECHNUNG" || d.typ === "ABSCHLAGSRECHNUNG";
+      if (dokTypFilter === "leer") return d.typ === "LEERES_DOKUMENT";
+      return true;
+    })
+    .filter(d => {
+      if (!dokSuchTerm) return true;
+      const searchLower = dokSuchTerm.toLowerCase();
+      return (d.nummer || "").toLowerCase().includes(searchLower) ||
+             (d.kunde.name || "").toLowerCase().includes(searchLower) ||
+             (d.datum || "").includes(searchLower);
+    })
+    .sort((a, b) => {
+      if (belegSort === "datum-desc") return new Date(b.datum.split('.').reverse().join('-')) - new Date(a.datum.split('.').reverse().join('-'));
+      if (belegSort === "datum-asc") return new Date(a.datum.split('.').reverse().join('-')) - new Date(b.datum.split('.').reverse().join('-'));
+      if (belegSort === "nummer-desc") return (b.nummer || "").localeCompare(a.nummer || "");
+      if (belegSort === "nummer-asc") return (a.nummer || "").localeCompare(b.nummer || "");
+      return 0;
+    });
+
+  if (!isLoaded) {
+    return <div className="flex h-screen items-center justify-center bg-slate-900 text-white">Lade Datenbank...</div>;
+  }
+
+  const createPDF = async () => {
+    // Dokument erst speichern
+    await saveDok();
+    
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const ml = 25;
+    const mr = 20;
+    const mt = 25;
+    const mb = 45;
+    const headerOffset = mt + 28; // fester Abstand unterhalb des Headers (größerer Abstand)
+
+    const addHeader = (pageNum = 1) => {
+      // Farbe aus Einstellungen parsen
+      const hexColor = firmenDaten.primaerFarbe || "#006666";
+      const r = parseInt(hexColor.slice(1,3), 16);
+      const g = parseInt(hexColor.slice(3,5), 16);
+      const b = parseInt(hexColor.slice(5,7), 16);
+      
+      // Logo einfügen wenn vorhanden
+      if (firmenDaten.logo) {
+        const logoWidth = firmenDaten.logoBreite || 40;
+        const logoHeight = firmenDaten.logoHoehe || 15;
+        let logoX = ml;
+        if (firmenDaten.logoPosition === "mitte") {
+          logoX = (pageWidth - logoWidth) / 2;
+        } else if (firmenDaten.logoPosition === "rechts") {
+          logoX = pageWidth - mr - logoWidth;
+        }
+        try {
+          doc.addImage(firmenDaten.logo, 'AUTO', logoX, mt - 10, logoWidth, logoHeight);
+        } catch(e) { console.error("Logo-Fehler:", e); }
+      }
+      
+      doc.setFontSize(28);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(r, g, b);
+      // Firmenname nur anzeigen wenn kein Logo vorhanden
+      if (!firmenDaten.logo) {
+        doc.text(firmenDaten.firmenname.toUpperCase(), pageWidth / 2, mt - 2, { align: "center" });
+      }
+
+      // Absender nur auf der ersten Seite, kleiner
+      if (pageNum === 1) {
+        doc.setFontSize(7);
+        // Briefkopf-Farbe parsen
+        const bkColor = firmenDaten.briefkopfFarbe || "#444444";
+        const bkR = parseInt(bkColor.slice(1,3), 16);
+        const bkG = parseInt(bkColor.slice(3,5), 16);
+        const bkB = parseInt(bkColor.slice(5,7), 16);
+        doc.setTextColor(bkR, bkG, bkB);
+        doc.setFont("helvetica", "normal");
+        const absenderName = firmenDaten.briefkopfAbsender === "firmenname" ? firmenDaten.firmenname : firmenDaten.inhaberName;
+        const absender = `${absenderName} · ${firmenDaten.strasse} · ${firmenDaten.plz} ${firmenDaten.ort}`;
+        doc.text(absender, ml, mt + 27);
+        doc.setDrawColor(204, 204, 204);
+        doc.line(ml, mt + 29, ml + doc.getTextWidth(absender), mt + 29);
+      }
+    };
+
+    const addFooter = (pageNum, totalPages) => {
+      // Draw a rule above the footer area
+      let fy = pageHeight - mb + 12;
+      doc.setDrawColor(204, 204, 204);
+      doc.line(ml, fy + 5, pageWidth - mr, fy + 5);
+
+      // Footer columns (4 left-aligned columns)
+      const colW = (pageWidth - ml - mr) / 4;
+      const colsX = [ml, ml + colW, ml + colW * 2, ml + colW * 3];
+      // E-Mail umbrechen wenn nötig
+      const emailLines = doc.splitTextToSize("E-Mail: " + firmenDaten.email, colW - 2);
+      const colLines = [
+        [firmenDaten.firmenname, firmenDaten.strasse, firmenDaten.plz + " " + firmenDaten.ort, firmenDaten.land],
+        ["Tel. " + firmenDaten.telefon, ...emailLines, "Web: " + firmenDaten.website],
+        ["Steuer-Nr. " + firmenDaten.steuernummer, "Inhaber: " + firmenDaten.inhaberName],
+        ["Bank: " + firmenDaten.bankName, "IBAN: " + firmenDaten.iban, "BIC: " + firmenDaten.bic]
+      ];
+
+      doc.setFontSize(8.5);
+      doc.setTextColor(68, 68, 68);
+      let maxLines = Math.max(...colLines.map(c => c.length));
+      let lineY = fy + 8;
+      for (let i = 0; i < maxLines; i++) {
+        for (let c = 0; c < 4; c++) {
+          const txt = colLines[c][i];
+          if (txt) doc.text(txt, colsX[c], lineY);
+        }
+        lineY += 3.8;
+      }
+
+      // Page number at bottom-right
+      doc.setFontSize(9);
+      doc.setTextColor(100);
+      const pText = `Seite ${pageNum} von ${totalPages}`;
+      const pWidth = doc.getTextWidth(pText);
+      doc.text(pText, pageWidth - mr - pWidth, pageHeight - 10);
+    };
+
+    // Startpunkt für Anschrift NACH dem kompletten Header
+    let y = mt + 34; // Kleinerer Abstand zur Rücksendezeile
+
+    addHeader(1);
+
+    // Anschrift (exakt wie Vorschau – ohne unnötige Leerzeilen)
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(17, 17, 17);
+    if (aktivesDok.kunde.name) {
+      doc.text(aktivesDok.kunde.name, ml, y);
+      y += 5;
+    }
+    doc.setFont("helvetica", "normal");
+    if (aktivesDok.kunde.strasse) {
+      doc.text(aktivesDok.kunde.strasse, ml, y);
+      y += 5;
+    }
+    const plzOrt = [aktivesDok.kunde.plz, aktivesDok.kunde.ort].filter(Boolean).join(" ");
+    if (plzOrt) {
+      doc.text(plzOrt, ml, y);
+      y += 5;
+    }
+    y += 24; // Größerer Abstand damit Rechnungstitel außerhalb Brieffenster
+
+    // Rechnungstitel + Nummer/Datum
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 102, 102);
+    // Bei Leeres Dokument den Betreff anzeigen, sonst den Typ
+    const titelText = aktivesDok.typ === "LEERES_DOKUMENT" 
+      ? (aktivesDok.betreff || "LEERES DOKUMENT") 
+      : (aktivesDok.typ || "RECHNUNG");
+    doc.text(titelText, ml, y);
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(17, 17, 17);
+    const numLabel = aktivesDok.typ === "ANGEBOT" ? "Angebots-Nr." : aktivesDok.typ === "ABSCHLAGSRECHNUNG" ? "Abschlagsrechnungs-Nr." : aktivesDok.typ === "LEERES_DOKUMENT" ? "Dok.-Nr." : "Rechnungs-Nr.";
+    doc.text(`${numLabel}: ${aktivesDok.nummer || "–"}`, pageWidth - mr, y - 4, { align: "right" });
+    doc.text(`Datum: ${aktivesDok.datum || "–"}`, pageWidth - mr, y, { align: "right" });
+    
+    // Leistungszeitraum (nur bei Rechnung und Abschlagsrechnung)
+    if (aktivesDok.typ !== "ANGEBOT" && aktivesDok.typ !== "LEERES_DOKUMENT" && (aktivesDok.leistungszeitraum?.von || aktivesDok.leistungszeitraum?.bis)) {
+      const lzVon = aktivesDok.leistungszeitraum.von || "";
+      const lzBis = aktivesDok.leistungszeitraum.bis || "";
+      const lzText = lzVon && lzBis ? `${lzVon} - ${lzBis}` : lzVon || lzBis;
+      doc.text(`Leistungszeitraum: ${lzText}`, pageWidth - mr, y + 5, { align: "right" });
+    }
+
+    y += 12;
+
+    // Bei Leeres Dokument: Freitext und optional Signaturfeld
+    if (aktivesDok.typ === "LEERES_DOKUMENT") {
+      // Freitext
+      if (aktivesDok.freitext) {
+        doc.setFontSize(11);
+        doc.setTextColor(17, 17, 17);
+        const freitextLines = doc.splitTextToSize(aktivesDok.freitext, pageWidth - ml - mr);
+        for (const ln of freitextLines) {
+          if (y > pageHeight - mb) {
+            doc.addPage();
+            addHeader(doc.internal.getNumberOfPages());
+            y = headerOffset;
+          }
+          doc.text(ln, ml, y);
+          y += 6;
+        }
+      }
+      
+      // Signaturfelder wenn aktiviert
+      const hasSignatur = aktivesDok.signaturKunde || aktivesDok.signaturAbsender;
+      if (hasSignatur) {
+        y += 15;
+        if (y + 35 > pageHeight - mb) {
+          doc.addPage();
+          addHeader(doc.internal.getNumberOfPages());
+          y = headerOffset + 15;
+        }
+        
+        // Berechne Positionen für nebeneinander oder einzeln
+        const bothSignatures = aktivesDok.signaturKunde && aktivesDok.signaturAbsender;
+        const sigWidth = 60;
+        const sigGap = 20;
+        
+        let xAbsender = ml;
+        let xKunde = bothSignatures ? ml + sigWidth + sigGap : ml;
+        
+        // Signaturfeld Absender (links) - mit gezeichneter Unterschrift
+        if (aktivesDok.signaturAbsender) {
+          doc.setFontSize(9);
+          doc.setTextColor(102, 102, 102);
+          doc.text(firmenDaten.inhaberName, xAbsender, y);
+          
+          // Wenn Signatur gezeichnet wurde, als Bild einfügen
+          if (aktivesDok.signaturAbsenderData) {
+            try {
+              doc.addImage(aktivesDok.signaturAbsenderData, 'PNG', xAbsender, y + 2, sigWidth, 20);
+            } catch (e) {
+              console.error('Fehler beim Einfügen der Signatur:', e);
+            }
+          }
+          
+          // Linie unter der Signatur
+          doc.setDrawColor(51, 51, 51);
+          doc.setLineWidth(0.3);
+          doc.line(xAbsender, y + 24, xAbsender + sigWidth, y + 24);
+          
+          // Ort, Datum unter der Linie
+          doc.setFontSize(8);
+          doc.setTextColor(153, 153, 153);
+          const absenderOrt = aktivesDok.signaturAbsenderOrt || "________________";
+          const absenderDatum = aktivesDok.signaturAbsenderDatum || "________________";
+          doc.text("Ort, Datum: " + absenderOrt + ", " + absenderDatum, xAbsender, y + 28);
+        }
+        
+        // Signaturfeld Kunde (rechts oder links wenn kein Absender)
+        if (aktivesDok.signaturKunde) {
+          doc.setFontSize(9);
+          doc.setTextColor(102, 102, 102);
+          doc.text("Unterschrift Kunde", xKunde, y);
+          
+          doc.setDrawColor(51, 51, 51);
+          doc.setLineWidth(0.3);
+          doc.line(xKunde, y + 24, xKunde + sigWidth, y + 24);
+          doc.setFontSize(8);
+          doc.setTextColor(153, 153, 153);
+          doc.text("Ort, Datum: ________________", xKunde, y + 28);
+        }
+      }
+      
+      // Footer und Ende für Leeres Dokument
+      const totalPages = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        addFooter(i, totalPages);
+      }
+
+      const fullName = aktivesDok.kunde.name || "Unbekannt";
+      const cleanName = fullName.replace(/^(Herr|Herrn|Frau|Fräulein)\s+/i, "").trim();
+      const lastName = cleanName.split(" ").pop().replace(/[^a-zA-Z0-9äöüß-]/g, "");
+      const fileName = `${aktivesDok.nummer}-${lastName}.pdf`;
+      doc.save(fileName);
+      return;
+    }
+
+    // Arbeitsort (editierbar oder aus Kundenadresse) unter der grünen Linie
+    const workText = aktivesDok.arbeitsort || (aktivesDok.typ === "ANGEBOT"
+      ? (aktivesDok.kunde.strasse && aktivesDok.kunde.ort
+        ? `Für die Arbeiten in der ${aktivesDok.kunde.strasse} in ${aktivesDok.kunde.ort}.`
+        : aktivesDok.kunde.strasse
+        ? `Für die Arbeiten in der ${aktivesDok.kunde.strasse}.`
+        : 'Für die Arbeiten in der Straße des Kunden.')
+      : (aktivesDok.kunde.strasse && aktivesDok.kunde.ort
+        ? `Für die ausgeführten Arbeiten in der ${aktivesDok.kunde.strasse} in ${aktivesDok.kunde.ort}.`
+        : aktivesDok.kunde.strasse
+        ? `Für die ausgeführten Arbeiten in der ${aktivesDok.kunde.strasse}.`
+        : 'Für die ausgeführten Arbeiten in der Straße des Kunden.'));
+    const workLines = doc.splitTextToSize(workText, pageWidth - ml - mr);
+    const workHeight = workLines.length * 5;
+    if (y + workHeight > pageHeight - mb) {
+      doc.addPage();
+      addHeader(doc.internal.getNumberOfPages());
+      y = headerOffset;
+    }
+    doc.setFontSize(10);
+    doc.setTextColor(68, 68, 68);
+    for (const ln of workLines) {
+      doc.text(ln, ml, y);
+      y += 5;
+    }
+    y += 4;
+
+    // Tabelle
+    let posCounter = 0;
+    const tableBody = aktivesDok.positionen.map((p, i) => {
+      let posNummer = "";
+      if (!p.isUeberschrift) {
+        if (p.isOptional) {
+          posNummer = "Opt.";
+        } else {
+          posCounter++;
+          posNummer = String(posCounter);
+        }
+      }
+      const gesamtBetrag = (parseVal(p.menge) * parseVal(p.preis)).toFixed(2) + " €";
+      const gesamtAnzeige = (p.isOptional && !p.isUeberschrift) ? `(${gesamtBetrag})` : gesamtBetrag;
+      
+      return [
+        posNummer,
+        p.name || "",
+        p.isUeberschrift ? "" : (p.menge || ""),
+        p.isUeberschrift ? "" : (p.einheit || ""),
+        p.isUeberschrift ? "" : ((p.preis || "") + (p.preis ? " €" : "")),
+        p.isUeberschrift ? "" : gesamtAnzeige
+      ];
+    });
+
+    doc.autoTable({
+      startY: y,
+      head: [['Pos.', 'Beschreibung', 'Menge', 'Einheit', 'Einzelpreis €', 'Gesamt €']],
+      body: tableBody,
+      theme: 'plain',
+      styles: { fontSize: 10, cellPadding: 2.8, overflow: 'linebreak', halign: 'left', lineWidth: {top: 0, right: 0, bottom: 0.1, left: 0}, lineColor: [238, 238, 238] },
+      headStyles: { fillColor: false, textColor: [0, 102, 102], fontStyle: 'bold', lineWidth: {top: 0, right: 0, bottom: 0.3, left: 0}, lineColor: [0, 102, 102] },
+      alternateRowStyles: { fillColor: false },
+      columnStyles: {
+        0: { cellWidth: 14, halign: 'left' },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 22, halign: 'right' },
+        3: { cellWidth: 20, halign: 'right' },
+        4: { cellWidth: 30, halign: 'right' },
+        5: { cellWidth: 30, halign: 'right' }
+      },
+      // Reserve the bottom margin so the table won't draw into the footer area
+      // und respektiere oberen Bereich für den Header.
+      margin: { left: ml, right: mr, bottom: mb, top: headerOffset },
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.row.index < aktivesDok.positionen.length) {
+          const pos = aktivesDok.positionen[data.row.index];
+          if (pos.isUeberschrift) {
+            data.cell.styles.fontStyle = 'bold';
+          } else if (data.column.index === 5) {
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      },
+      // Add header on every page while autoTable handles page breaks automatically.
+      didDrawPage: (data) => {
+        addHeader(doc.internal.getCurrentPageInfo().pageNumber);
+      }
+    });
+
+    y = doc.lastAutoTable.finalY + 14;
+
+    // Prüfen, ob genug Platz für die Summen auf der aktuellen Seite bleibt.
+    let sumHeight = 28; // geschätzte Höhe der Summen-Box in mm
+    if (abschlagProzent > 0) sumHeight += 18;
+    if (y + sumHeight > pageHeight - mb) {
+      doc.addPage();
+      addHeader(doc.internal.getCurrentPageInfo().pageNumber);
+      y = headerOffset;
+    }
+
+    // Summen-Block (fast 1:1 wie Vorschau)
+    const sumRight = pageWidth - mr;
+    const sumLeft = sumRight - 85;
+
+    doc.setFontSize(10);
+    doc.setDrawColor(0, 102, 102);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(17, 17, 17);
+
+    // Nettobetrag with borderTop 1px — line slightly above the amount (per DIN)
+    doc.setLineWidth(0.1);
+    // draw rule 2mm above current y so it sits above the nettobetrag text
+    doc.line(sumLeft, y - 2, sumRight, y - 2);
+    y += 2;
+    doc.text('Nettobetrag', sumLeft, y);
+    doc.text(restNetto.toFixed(2) + ' €', sumRight, y, { align: "right" });
+    y += 5; // padding bottom approx
+
+    // Rabatt (wenn vorhanden)
+    const rabattBetrag = parseVal(aktivesDok.rabatt || "0");
+    if (rabattBetrag > 0) {
+      doc.setTextColor(0, 102, 102);
+      const rabattText = aktivesDok.rabattBeschreibung || "Nachlass";
+      doc.text(rabattText, sumLeft, y);
+      doc.text(`-${rabattBetrag.toFixed(2)} €`, sumRight, y, { align: "right" });
+      y += 4;
+      
+      // Zwischensumme nach Rabatt
+      doc.setTextColor(17, 17, 17);
+      doc.setFont("helvetica", "bold");
+      doc.setLineWidth(0.1);
+      doc.line(sumLeft, y, sumRight, y);
+      y += 3;
+      doc.text('Zwischensumme', sumLeft, y);
+      doc.text(nettoNachRabatt.toFixed(2) + ' €', sumRight, y, { align: "right" });
+      y += 5;
+      doc.setFont("helvetica", "normal");
+    }
+
+    // MwSt with padding 1mm no border
+    doc.setTextColor(17, 17, 17);
+    doc.text('MwSt. 19 %', sumLeft, y);
+    doc.text(mwst.toFixed(2) + ' €', sumRight, y, { align: "right" });
+    y += 4;
+
+    // Rechnungsbetrag/Angebotssumme with borderTop 2px, padding 4mm top
+    doc.setLineWidth(0.3);
+    // Move the green summary rule slightly upwards so it doesn't cross the amount text
+    doc.line(sumLeft, y - 3, sumRight, y - 3);
+    y += 4;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    const sumLabel = aktivesDok.typ === "ANGEBOT" ? "Angebotssumme" : aktivesDok.typ === "ABSCHLAGSRECHNUNG" ? "Abschlagsrechnungsbetrag" : "Rechnungsbetrag";
+    doc.text(sumLabel, sumLeft, y);
+    doc.text(brutto.toFixed(2) + ' €', sumRight, y, { align: "right" });
+    y += 4; // bottom
+
+    // Abschlagsrechnungen abziehen (nur bei normaler RECHNUNG)
+    if (aktivesDok.typ === "RECHNUNG" && parseVal(aktivesDok.abschlagsrechnungBetrag || "0") > 0) {
+      const abschlagsrechnungBetrag = parseVal(aktivesDok.abschlagsrechnungBetrag || "0");
+      const restbetragNachAbschlag = brutto - abschlagsrechnungBetrag;
+      
+      doc.setTextColor(0, 102, 102);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      y += 2;
+      doc.text('Abzgl. Abschlagsrechnung(en)', sumLeft, y);
+      doc.text(`-${abschlagsrechnungBetrag.toFixed(2)} €`, sumRight, y, { align: "right" });
+      
+      y += 5;
+      doc.setTextColor(17, 17, 17);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.setLineWidth(0.1);
+      doc.line(sumLeft, y, sumRight, y);
+      y += 4;
+      doc.text('Restbetrag', sumLeft, y);
+      doc.text(restbetragNachAbschlag.toFixed(2) + ' €', sumRight, y, { align: "right" });
+      y += 2;
+    }
+
+    // Abschlag + Rest (wenn vorhanden)
+    if (abschlagProzent > 0) {
+      y += 3;
+      doc.setTextColor(0, 102, 102);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`Abschlag ${abschlagProzent} %`, sumLeft, y);
+      doc.text(`-${abschlagBetrag.toFixed(2)} €`, sumRight, y, { align: "right" });
+      y += 3;
+
+      doc.setTextColor(17, 17, 17);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.setLineWidth(0.1);
+      doc.setLineDash([1, 1]);
+      doc.line(sumLeft, y, sumRight, y);
+      y += 2;
+      doc.text('Restbetrag', sumLeft, y);
+      doc.text(restBrutto.toFixed(2) + ' €', sumRight, y, { align: "right" });
+      doc.setLineDash([]);
+    }
+    // Zahlungsbedingungen/Angebotsbedingungen: immer am Ende des Dokuments (nach Summen), nicht in Footer.
+    const stundensatz = firmenDaten.stundensatz || 59;
+    const zahlungsziel = firmenDaten.zahlungsziel || 10;
+    const angebotsgueltigkeit = firmenDaten.angebotsgueltigkeit || 30;
+    const paymentLines = aktivesDok.typ === "ANGEBOT" ? [
+      "",
+      (firmenDaten.angebotHinweis || "Unvorhergesehene Arbeiten werden mit {stundensatz},- €/Std. abgerechnet.").replace('{stundensatz}', stundensatz),
+      "",
+      `Dieses Angebot ist ${angebotsgueltigkeit} Tage ab Ausstellungsdatum gültig.`,
+      "",
+      "Wir freuen uns auf Ihre Auftragserteilung und stehen für Rückfragen gerne zur Verfügung.",
+      "",
+      "Mit freundlichen Grüßen",
+      firmenDaten.inhaberName
+    ] : [
+      "",
+      `Zahlungsbedingungen: Zahlung innerhalb von ${zahlungsziel} Tagen ab Rechnungseingang ohne Abzüge.`,
+      "",
+      ...(aktivesDok.rechnungshinweis ? [aktivesDok.rechnungshinweis, ""] : []),
+      "Bitte überweisen Sie den Rechnungsbetrag unter Angabe der Rechnungsnummer auf das unten angegebene Konto.",
+      "",
+      "Mit freundlichen Grüßen",
+      firmenDaten.inhaberName
+    ];
+
+    // Abschätzen, wie viel Platz die Zahlungsbedingungen benötigen (dynamisch mit Zeilenumbruch)
+    const maxWidth = pageWidth - ml - mr;
+    const paymentWrapped = paymentLines.map(l => doc.splitTextToSize(l, maxWidth));
+    const paymentHeight = paymentWrapped.reduce((acc, arr) => acc + (arr.length * 5), 0);
+
+    // Falls nicht genug Platz auf der aktuellen Seite, neue Seite einfügen
+    if (y + paymentHeight > pageHeight - mb) {
+      doc.addPage();
+      addHeader(doc.internal.getNumberOfPages());
+      y = headerOffset;
+    }
+
+    // Leerzeile vor Zahlungsbedingungen
+    y += 5;
+    doc.setFontSize(10);
+    doc.setTextColor(68, 68, 68);
+    for (const wrapped of paymentWrapped) {
+      for (const ln of wrapped) {
+        doc.text(ln, ml, y);
+        y += 5;
+      }
+    }
+
+    // Add footers with total pages
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      addFooter(i, totalPages);
+    }
+
+    // Dateiname: {Nummer}-{Nachname}
+    const fullName = aktivesDok.kunde.name || "Unbekannt";
+    const cleanName = fullName.replace(/^(Herr|Herrn|Frau|Fräulein)\s+/i, "").trim();
+    const lastName = cleanName.split(" ").pop().replace(/[^a-zA-Z0-9äöüß-]/g, "");
+    const fileName = `${aktivesDok.nummer}-${lastName}.pdf`;
+    doc.save(fileName);
+  };
+
+  return (
+    <div className="app-container flex h-screen overflow-hidden">
+      <button
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="sidebar-toggle fixed top-4 left-4 z-50 bg-teal-600 hover:bg-teal-700 text-white p-2 rounded"
+        title="Menü"
+      >
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={sidebarOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
+        </svg>
+      </button>
+      
+      <div className={`sidebar-backdrop ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)}></div>
+      
+      <div className={`sidebar w-96 bg-slate-900 text-white p-4 no-print flex flex-col shadow-2xl border-r border-teal-900 ${sidebarOpen ? 'open' : ''}`}>
+        <div className="flex gap-1 mb-4 bg-slate-800 p-1 rounded text-[10px] font-bold uppercase flex-wrap">
+          <button onClick={() => setActiveTab("material")} className={`flex-1 py-2 rounded ${activeTab === "material" ? "bg-teal-600" : ""}`}>Positionen</button>
+          <button onClick={() => setActiveTab("kunden")} className={`flex-1 py-2 rounded ${activeTab === "kunden" ? "bg-teal-600" : ""}`}>Kunden</button>
+          <button onClick={() => setActiveTab("dokumente")} className={`flex-1 py-2 rounded ${activeTab === "dokumente" ? "bg-teal-600" : ""}`}>Dokumente</button>
+          <button onClick={() => setActiveTab("neu")} className={`flex-1 py-2 rounded ${activeTab === "neu" ? "bg-teal-600" : ""}`}>+ Neu</button>
+          <button onClick={() => setActiveTab("einstellungen")} className={`flex-1 py-2 rounded ${activeTab === "einstellungen" ? "bg-teal-600" : ""}`}>⚙️</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
+          <div className={`p-2 text-xs rounded mb-2 ${hasUnsavedData ? 'bg-amber-700 border border-amber-500' : 'bg-teal-900'}`}>
+            <div className="flex items-center justify-between">
+              <span className="font-bold">🔒 RAM-Modus</span>
+              {hasUnsavedData && <span className="text-amber-200 animate-pulse">⚠️ Nicht gesichert!</span>}
+            </div>
+            <div className="text-[10px] mt-1 text-slate-300">
+              Kunden: {db.kunden.length} | Material: {db.material.length} | Belege: {rechnungen.length}
+            </div>
+            {hasUnsavedData && (
+              <div className="text-[9px] mt-1 text-amber-200">
+                💡 Exportieren Sie regelmäßig, um Datenverlust zu vermeiden!
+              </div>
+            )}
+            {lastExportTime && (
+              <div className="text-[9px] mt-1 text-green-300">
+                ✓ Letzter Export: {lastExportTime}
+              </div>
+            )}
+          </div>
+          <button onClick={() => setSuchTerm("")} className="bg-red-600 hover:bg-red-500 px-3 py-1 rounded text-xs font-bold mb-2 w-full">Suchfeld löschen</button>
+
+          {activeTab === "material" && (
+            <>
+              {successMessage && (
+                <div style={{ backgroundColor: '#10b981', color: 'white', padding: '8px 12px', borderRadius: '4px', marginBottom: '12px', fontSize: '11px', fontWeight: 'bold', textAlign: 'center' }}>
+                  {successMessage}
+                </div>
+              )}
+              <input type="text" placeholder="Suchen..." className="w-full p-2 text-black text-xs rounded outline-none" value={suchTerm} onChange={e => setSuchTerm(e.target.value)} />
+              {db.material.filter(m => (m.Name || "").toLowerCase().includes(suchTerm.toLowerCase())).map((m, i) => (
+                <div key={m.id || i} className="p-2 bg-slate-800 rounded border border-slate-700 text-[10px] group">
+                  <input className="bg-transparent text-teal-300 font-bold w-full outline-none" value={m.Name} onChange={e => updateStamm('material', m.id, 'Name', e.target.value)} />
+                  <div className="flex justify-between mt-1 items-center">
+                    <div className="flex gap-1 text-slate-400 italic">
+                      <input className="bg-slate-700 w-16 px-1 rounded text-white" value={m.Verkaufspreis} onChange={e => updateStamm('material', m.id, 'Verkaufspreis', e.target.value)} /> €
+                      <input className="bg-slate-700 w-10 px-1 rounded uppercase text-white" value={m.Einheit} onChange={e => updateStamm('material', m.id, 'Einheit', e.target.value)} />
+                    </div>
+                    <button onClick={() => { addPos(m); setClickedMaterial(m.id); setTimeout(() => setClickedMaterial(null), 300); }} className={`px-3 py-1 rounded font-bold uppercase text-xs transition-colors ${clickedMaterial === m.id ? 'bg-green-500 scale-95' : 'bg-teal-600'}`} style={{transform: clickedMaterial === m.id ? 'scale(0.95)' : 'scale(1)', transition: 'all 0.1s ease'}}>ADD</button>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {activeTab === "kunden" && (
+            <>
+              <input type="text" placeholder="Kunden suchen..." className="w-full p-2 text-black text-xs rounded outline-none" value={suchTerm} onChange={e => setSuchTerm(e.target.value)} />
+              {db.kunden.filter(k => (k.Organisation || k.name || "").toLowerCase().includes(suchTerm.toLowerCase())).map((k, i) => {
+                const displayName = korrigiereName(k.Organisation || k.name || "", !!k.Organisation);
+                return (
+                <div key={k.id || i} className="p-3 bg-slate-800 rounded border border-slate-700 text-[10px] space-y-2">
+                  <select value={k.anrede} onChange={e => updateStamm('kunden', k.id, 'anrede', e.target.value)} className="bg-slate-700 text-teal-300 rounded px-1 outline-none font-bold">
+                    <option value="Organisation">Organisation</option>
+                    <option value="Herr">Herr</option>
+                    <option value="Frau">Frau</option>
+                  </select>
+                  <input className="bg-transparent text-white font-bold w-full outline-none text-xs border-b border-slate-700" placeholder="Name / Firma" value={displayName} onChange={e => updateStamm('kunden', k.id, 'Organisation', e.target.value)} />
+                  <input className="bg-slate-700 text-white w-full outline-none text-xs rounded px-2 py-1" placeholder="Straße" value={k.Strasse || k.strasse || ""} onChange={e => updateStamm('kunden', k.id, 'Strasse', e.target.value)} />
+                  <div className="flex gap-2">
+                    <input className="bg-slate-700 text-white w-1/3 outline-none text-xs rounded px-2 py-1" placeholder="PLZ" value={k.PLZ || k.plz || ""} onChange={e => updateStamm('kunden', k.id, 'PLZ', e.target.value)} />
+                    <input className="bg-slate-700 text-white w-2/3 outline-none text-xs rounded px-2 py-1" placeholder="Ort" value={k.Ort || k.ort || ""} onChange={e => updateStamm('kunden', k.id, 'Ort', e.target.value)} />
+                  </div>
+                  <button onClick={() => { waehleKunde(k); setClickedKunde(k.id); setTimeout(() => setClickedKunde(null), 300); }} className={`w-full py-1.5 rounded font-bold uppercase text-xs transition-colors ${clickedKunde === k.id ? 'bg-green-500 scale-95' : 'bg-teal-600'}`} style={{transform: clickedKunde === k.id ? 'scale(0.95)' : 'scale(1)', transition: 'all 0.1s ease'}}>Wählen</button>
+                </div>
+              );})}
+            </>
+          )}
+
+          {activeTab === "dokumente" && (
+            <div className="space-y-3">
+              <h3 className="text-teal-400 font-bold uppercase text-xs">Dokumente</h3>
+              <input 
+                type="text" 
+                placeholder="Dokumente suchen (Nummer, Kunde, Datum)..." 
+                className="w-full p-2 text-black text-xs rounded outline-none" 
+                value={dokSuchTerm} 
+                onChange={e => setDokSuchTerm(e.target.value)} 
+              />
+              <div className="flex gap-2 mb-2">
+                <select value={belegSort} onChange={e => setBelegSort(e.target.value)} className="bg-slate-700 text-white rounded px-2 py-1 text-xs">
+                  <option value="datum-desc">Datum (neueste zuerst)</option>
+                  <option value="datum-asc">Datum (älteste zuerst)</option>
+                  <option value="nummer-desc">Nummer (neueste zuerst)</option>
+                  <option value="nummer-asc">Nummer (älteste zuerst)</option>
+                </select>
+                <button onClick={() => setMusterFilter(!musterFilter)} className={`px-3 py-1 rounded text-xs font-bold ${musterFilter ? "bg-purple-600" : "bg-slate-700"}`}>
+                  {musterFilter ? "Muster aus" : "Nur Muster"}
+                </button>
+              </div>
+              <div className="flex gap-2 mb-2">
+                <button onClick={() => setDokTypFilter("alle")} className={`flex-1 px-3 py-1 rounded text-xs font-bold ${dokTypFilter === "alle" ? "bg-teal-600" : "bg-slate-700"}`}>
+                  Alle
+                </button>
+                <button onClick={() => setDokTypFilter("angebote")} className={`flex-1 px-3 py-1 rounded text-xs font-bold ${dokTypFilter === "angebote" ? "bg-blue-600" : "bg-slate-700"}`}>
+                  Angebote
+                </button>
+                <button onClick={() => setDokTypFilter("rechnungen")} className={`flex-1 px-3 py-1 rounded text-xs font-bold ${dokTypFilter === "rechnungen" ? "bg-green-600" : "bg-slate-700"}`}>
+                  Rechnungen
+                </button>
+                <button onClick={() => setDokTypFilter("leer")} className={`flex-1 px-3 py-1 rounded text-xs font-bold ${dokTypFilter === "leer" ? "bg-purple-600" : "bg-slate-700"}`}>
+                  Leer
+                </button>
+              </div>
+              {sortedRechnungen.length === 0 && <p className="text-slate-500 text-xs italic">Keine Belege gefunden.</p>}
+              {sortedRechnungen.map(d => (
+                <div key={d.id} className="p-3 bg-slate-800 rounded border border-slate-700 text-xs hover:bg-slate-700 flex flex-col gap-1">
+                  <div className="flex justify-between items-center">
+                    <div className="cursor-pointer flex-1" onClick={() => loadDok(d)}>
+                      <div className={`font-bold ${d.typ === "RECHNUNG" ? "text-green-400" : d.typ === "ANGEBOT" ? "text-blue-400" : d.typ === "ABSCHLAGSRECHNUNG" ? "text-orange-400" : d.typ === "LEERES_DOKUMENT" ? "text-purple-400" : "text-yellow-400"}`}>
+                        {d.typ === "LEERES_DOKUMENT" ? "LEERES DOK." : d.typ} {d.nummer} {d.muster ? "(Muster)" : ""}
+                      </div>
+                      <div className="text-slate-400 text-[11px]">
+                        {d.datum} – {d.kunde.name || "Kein Kunde"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-1">
+                    {d.muster ? (
+                      <button onClick={e => { e.stopPropagation(); removeMuster(d); }} className="bg-orange-600 hover:bg-orange-500 px-2 py-1 rounded font-bold uppercase text-xs flex-1">
+                        Von Muster entfernen
+                      </button>
+                    ) : (
+                      <button onClick={e => { e.stopPropagation(); copyAsMuster(d); }} className="bg-purple-600 hover:bg-purple-500 px-2 py-1 rounded font-bold uppercase text-xs flex-1">
+                        Als Muster speichern
+                      </button>
+                    )}
+                    <button onClick={e => { e.stopPropagation(); deleteDok(d); }} className="bg-red-600 hover:bg-red-500 px-2 py-1 rounded font-bold uppercase text-xs">
+                      Löschen
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === "neu" && (
+            <div className="space-y-6">
+              <div className="bg-slate-800 p-4 rounded border border-teal-900">
+                <p className="font-bold text-teal-400 uppercase mb-2 text-xs">Neuer Kunde</p>
+                <select value={neuKunde.anrede} onChange={e => setNeuKunde({...neuKunde, anrede: e.target.value})} className="w-full p-2 bg-slate-700 text-white rounded mb-2 text-xs">
+                  <option value="Organisation">Organisation</option>
+                  <option value="Herr">Herr</option>
+                  <option value="Frau">Frau</option>
+                </select>
+                <input type="text" placeholder="Name / Firma" className="w-full p-2 text-black rounded mb-2 text-xs" value={neuKunde.name} onChange={e => setNeuKunde({...neuKunde, name: e.target.value})} />
+                <input type="text" placeholder="Straße" className="w-full p-2 text-black rounded mb-2 text-xs" value={neuKunde.strasse} onChange={e => setNeuKunde({...neuKunde, strasse: e.target.value})} />
+                <div className="flex gap-2">
+                  <input type="text" placeholder="PLZ" className="w-1/3 p-2 text-black rounded text-xs" value={neuKunde.plz} onChange={e => setNeuKunde({...neuKunde, plz: e.target.value})} />
+                  <input type="text" placeholder="Ort" className="w-2/3 p-2 text-black rounded text-xs" value={neuKunde.ort} onChange={e => setNeuKunde({...neuKunde, ort: e.target.value})} />
+                </div>
+                <button onClick={() => {
+                  const k = { ...neuKunde, id: Date.now() };
+                  saveToDB({ ...db, kunden: [k, ...db.kunden] });
+                  waehleKunde(k);
+                  setNeuKunde({ anrede: "Organisation", name: "", strasse: "", plz: "", ort: "" });
+                }} className="mt-2 w-full bg-teal-600 py-2 rounded font-bold uppercase text-xs">
+                  Kunde Speichern
+                </button>
+              </div>
+
+              <div className="bg-slate-800 p-4 rounded border border-teal-900">
+                <p className="font-bold text-teal-400 uppercase mb-2 text-xs">Neue Position</p>
+                <input type="text" placeholder="Materialname" className="w-full p-2 text-black rounded mb-2 text-xs" value={neuMat.name} onChange={e => setNeuMat({...neuMat, name: e.target.value})} />
+                <div className="flex gap-2">
+                  <input type="text" placeholder="Einheit" className="w-1/2 p-2 text-black rounded text-xs" value={neuMat.einheit} onChange={e => setNeuMat({...neuMat, einheit: e.target.value})} />
+                  <input type="text" placeholder="Preis €" className="w-1/2 p-2 text-black rounded text-xs" value={neuMat.preis} onChange={e => setNeuMat({...neuMat, preis: e.target.value})} />
+                </div>
+                <button onClick={() => {
+                  const m = { Name: neuMat.name, Einheit: neuMat.einheit, Verkaufspreis: neuMat.preis.replace(',', '.'), id: Date.now() };
+                  saveToDB({ ...db, material: [m, ...db.material] });
+                  setNeuMat({ name: "", einheit: "Stk", preis: "0,00" });
+                }} className="mt-2 w-full bg-teal-600 py-2 rounded font-bold uppercase text-xs">
+                  Material Speichern
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "einstellungen" && (
+            <div className="space-y-4">
+              <p className="font-bold text-teal-400 uppercase text-xs mb-2">⚙️ Firmeneinstellungen</p>
+              
+              {/* Logo Upload */}
+              <div className="bg-slate-800 p-3 rounded border border-teal-900">
+                <p className="text-xs text-slate-400 mb-2">Logo</p>
+                <div className="flex items-center gap-2 mb-2">
+                  {firmenDaten.logo && (
+                    <img src={firmenDaten.logo} alt="Logo" style={{ maxHeight: '40px', maxWidth: '100px' }} />
+                  )}
+                  <button onClick={() => logoInputRef.current?.click()} className="bg-teal-600 px-3 py-1 rounded text-xs">
+                    {firmenDaten.logo ? 'Ändern' : 'Hochladen'}
+                  </button>
+                  {firmenDaten.logo && (
+                    <button onClick={() => saveFirmenDaten({...firmenDaten, logo: ''})} className="bg-red-600 px-2 py-1 rounded text-xs">✕</button>
+                  )}
+                  <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                </div>
+                <p className="text-xs text-slate-400 mb-1">Position:</p>
+                <div className="flex gap-2 mb-2">
+                  {['links', 'mitte', 'rechts'].map(pos => (
+                    <button key={pos} onClick={() => saveFirmenDaten({...firmenDaten, logoPosition: pos})} 
+                      className={`px-3 py-1 rounded text-xs ${firmenDaten.logoPosition === pos ? 'bg-teal-600' : 'bg-slate-700'}`}>
+                      {pos.charAt(0).toUpperCase() + pos.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-400 mb-1">Größe (mm):</p>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-slate-500">Breite</label>
+                    <input type="number" className="w-full p-2 text-black rounded text-xs" 
+                      value={firmenDaten.logoBreite || 40} 
+                      onChange={e => saveFirmenDaten({...firmenDaten, logoBreite: parseInt(e.target.value) || 40})} />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-slate-500">Höhe</label>
+                    <input type="number" className="w-full p-2 text-black rounded text-xs" 
+                      value={firmenDaten.logoHoehe || 15} 
+                      onChange={e => saveFirmenDaten({...firmenDaten, logoHoehe: parseInt(e.target.value) || 15})} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Firmenname & Farben */}
+              <div className="bg-slate-800 p-3 rounded border border-teal-900">
+                <p className="text-xs text-slate-400 mb-1">Firmenname</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.firmenname} onChange={e => saveFirmenDaten({...firmenDaten, firmenname: e.target.value})} />
+                <p className="text-xs text-slate-400 mb-1">Primärfarbe (Überschriften)</p>
+                <div className="flex gap-2 items-center mb-2">
+                  <input type="color" value={firmenDaten.primaerFarbe} onChange={e => saveFirmenDaten({...firmenDaten, primaerFarbe: e.target.value})} className="w-10 h-8 rounded cursor-pointer" />
+                  <input type="text" className="flex-1 p-2 text-black rounded text-xs" value={firmenDaten.primaerFarbe} onChange={e => saveFirmenDaten({...firmenDaten, primaerFarbe: e.target.value})} />
+                </div>
+                <p className="text-xs text-slate-400 mb-1">Briefkopf-Farbe (Absender)</p>
+                <div className="flex gap-2 items-center mb-2">
+                  <input type="color" value={firmenDaten.briefkopfFarbe || '#444444'} onChange={e => saveFirmenDaten({...firmenDaten, briefkopfFarbe: e.target.value})} className="w-10 h-8 rounded cursor-pointer" />
+                  <input type="text" className="flex-1 p-2 text-black rounded text-xs" value={firmenDaten.briefkopfFarbe || '#444444'} onChange={e => saveFirmenDaten({...firmenDaten, briefkopfFarbe: e.target.value})} />
+                </div>
+                <p className="text-xs text-slate-400 mb-1">Briefkopf-Absender</p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => saveFirmenDaten({...firmenDaten, briefkopfAbsender: 'inhaber'})}
+                    className={`flex-1 py-2 rounded text-xs ${firmenDaten.briefkopfAbsender !== 'firmenname' ? 'bg-teal-600' : 'bg-slate-700'}`}
+                  >Inhaber</button>
+                  <button 
+                    onClick={() => saveFirmenDaten({...firmenDaten, briefkopfAbsender: 'firmenname'})}
+                    className={`flex-1 py-2 rounded text-xs ${firmenDaten.briefkopfAbsender === 'firmenname' ? 'bg-teal-600' : 'bg-slate-700'}`}
+                  >Firmenname</button>
+                </div>
+              </div>
+
+              {/* Adresse */}
+              <div className="bg-slate-800 p-3 rounded border border-teal-900">
+                <p className="text-xs text-slate-400 mb-1">Inhaber</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.inhaberName} onChange={e => saveFirmenDaten({...firmenDaten, inhaberName: e.target.value})} />
+                <p className="text-xs text-slate-400 mb-1">Straße</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.strasse} onChange={e => saveFirmenDaten({...firmenDaten, strasse: e.target.value})} />
+                <div className="flex gap-2">
+                  <div className="w-1/3">
+                    <p className="text-xs text-slate-400 mb-1">PLZ</p>
+                    <input type="text" className="w-full p-2 text-black rounded text-xs" 
+                      value={firmenDaten.plz} onChange={e => saveFirmenDaten({...firmenDaten, plz: e.target.value})} />
+                  </div>
+                  <div className="w-2/3">
+                    <p className="text-xs text-slate-400 mb-1">Ort</p>
+                    <input type="text" className="w-full p-2 text-black rounded text-xs" 
+                      value={firmenDaten.ort} onChange={e => saveFirmenDaten({...firmenDaten, ort: e.target.value})} />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400 mb-1 mt-2">Land</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs" 
+                  value={firmenDaten.land} onChange={e => saveFirmenDaten({...firmenDaten, land: e.target.value})} />
+              </div>
+
+              {/* Kontakt */}
+              <div className="bg-slate-800 p-3 rounded border border-teal-900">
+                <p className="text-xs text-slate-400 mb-1">Telefon</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.telefon} onChange={e => saveFirmenDaten({...firmenDaten, telefon: e.target.value})} />
+                <p className="text-xs text-slate-400 mb-1">E-Mail</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.email} onChange={e => saveFirmenDaten({...firmenDaten, email: e.target.value})} />
+                <p className="text-xs text-slate-400 mb-1">Website</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs" 
+                  value={firmenDaten.website} onChange={e => saveFirmenDaten({...firmenDaten, website: e.target.value})} />
+              </div>
+
+              {/* Steuer & Bank */}
+              <div className="bg-slate-800 p-3 rounded border border-teal-900">
+                <p className="text-xs text-slate-400 mb-1">Steuernummer</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.steuernummer} onChange={e => saveFirmenDaten({...firmenDaten, steuernummer: e.target.value})} />
+                <p className="text-xs text-slate-400 mb-1">Bank</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.bankName} onChange={e => saveFirmenDaten({...firmenDaten, bankName: e.target.value})} />
+                <p className="text-xs text-slate-400 mb-1">IBAN</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.iban} onChange={e => saveFirmenDaten({...firmenDaten, iban: e.target.value})} />
+                <p className="text-xs text-slate-400 mb-1">BIC</p>
+                <input type="text" className="w-full p-2 text-black rounded text-xs" 
+                  value={firmenDaten.bic} onChange={e => saveFirmenDaten({...firmenDaten, bic: e.target.value})} />
+              </div>
+
+              {/* Zahlungsbedingungen */}
+              <div className="bg-slate-800 p-3 rounded border border-teal-900">
+                <p className="font-bold text-teal-400 uppercase text-xs mb-2">Zahlungsbedingungen</p>
+                <p className="text-xs text-slate-400 mb-1">Zahlungsziel (Tage)</p>
+                <input type="number" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.zahlungsziel || 10} onChange={e => saveFirmenDaten({...firmenDaten, zahlungsziel: parseInt(e.target.value) || 10})} />
+                <p className="text-xs text-slate-400 mb-1">Angebotsgültigkeit (Tage)</p>
+                <input type="number" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.angebotsgueltigkeit || 30} onChange={e => saveFirmenDaten({...firmenDaten, angebotsgueltigkeit: parseInt(e.target.value) || 30})} />
+                <p className="text-xs text-slate-400 mb-1">Stundensatz (€)</p>
+                <input type="number" className="w-full p-2 text-black rounded text-xs mb-2" 
+                  value={firmenDaten.stundensatz || 59} onChange={e => saveFirmenDaten({...firmenDaten, stundensatz: parseInt(e.target.value) || 59})} />
+                <p className="text-xs text-slate-400 mb-1">Angebots-Hinweistext <span className="text-slate-500">(verwende {'{stundensatz}'} als Platzhalter)</span></p>
+                <textarea className="w-full p-2 text-black rounded text-xs" rows="2"
+                  value={firmenDaten.angebotHinweis || "Unvorhergesehene Arbeiten werden mit {stundensatz},- €/Std. abgerechnet."}
+                  onChange={e => saveFirmenDaten({...firmenDaten, angebotHinweis: e.target.value})} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="pt-4 border-t border-slate-700 space-y-2 text-xs">
+          <button onClick={() => saveDok()} className="w-full bg-emerald-700 py-2 rounded font-bold uppercase">💾 Zum RAM hinzufügen</button>
+          <button onClick={newDok} className="w-full bg-blue-700 py-2 rounded font-bold uppercase">Neue Vorlage starten</button>
+          <button
+            onClick={createPDF}
+            className="w-full bg-emerald-600 py-3 rounded font-bold uppercase shadow-lg"
+          >
+            � PDF erstellen
+          </button>
+          <div className="grid grid-cols-1 gap-2 mt-3">
+            <button 
+              onClick={async () => {
+                const pw = await showExportPasswordDialog();
+                if (pw) {
+                  try {
+                    await exportEncrypted(pw);
+                    setHasUnsavedData(false);
+                    setLastExportTime(new Date().toLocaleTimeString('de-DE'));
+                    alert('✓ Verschlüsseltes Backup wurde heruntergeladen');
+                  } catch (err) {
+                    alert('Export-Fehler: ' + err.message);
+                  }
+                }
+              }} 
+              className="bg-indigo-700 py-2 rounded font-bold uppercase hover:bg-indigo-600"
+            >
+              🔐 Verschlüsselter Export
+            </button>
+            <label className="bg-indigo-600 py-2 rounded text-center cursor-pointer hover:bg-indigo-500 font-bold uppercase">
+              🔓 Verschlüsselter Import
+              <input type="file" className="hidden" accept=".enc,.json" onChange={async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                e.target.value = ''; // Reset input
+                
+                // Prüfen ob verschlüsselt (.enc) oder unverschlüsselt (.json)
+                if (file.name.endsWith('.enc')) {
+                  const pw = await showImportPasswordDialog();
+                  if (pw) {
+                    try {
+                      await importEncrypted(file, pw);
+                      refreshFromAppData();
+                      setHasUnsavedData(false);
+                      setLastExportTime(null);
+                      alert('✓ Daten erfolgreich importiert!');
+                    } catch (err) {
+                      alert('Import-Fehler: ' + err.message);
+                    }
+                  }
+                } else {
+                  // Unverschlüsselter JSON-Import (für Migration)
+                  if (!confirm('Unverschlüsselten JSON-Import durchführen? (Nur für alte Backups)')) return;
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    try {
+                      const data = JSON.parse(ev.target.result);
+                      if (!data.kunden || !data.material) throw new Error('Ungültiges Format');
+                      window.CryptoModule.loadDataIntoRAM(data);
+                      refreshFromAppData();
+                      setHasUnsavedData(false);
+                      setLastExportTime(null);
+                      alert('✓ Daten erfolgreich importiert!');
+                    } catch (err) {
+                      alert('Import-Fehler: ' + err.message);
+                    }
+                  };
+                  reader.readAsText(file);
+                }
+              }} />
+            </label>
+          </div>
+          <button 
+            onClick={async () => {
+              const confirmed = await confirmSecureWipe();
+              if (confirmed) {
+                wipeRAM(true);
+              }
+            }}
+            className="w-full bg-red-700 py-3 rounded font-bold uppercase mt-4 hover:bg-red-600 border border-red-500"
+          >
+            🔒 Sitzung sicher beenden
+          </button>
+          <p className="text-[10px] text-slate-500 text-center mt-1">
+            Löscht alle Daten aus dem RAM und lädt die Seite neu
+          </p>
+        </div>
+      </div>
+
+      {/* Vorschau */}
+      <div className="main-content flex-1 p-6 lg:p-12 bg-slate-50 overflow-y-auto">
+        <div
+          id="rechnung-druck"
+          style={{
+            width: '210mm',
+            minHeight: '297mm',
+            padding: '25mm 20mm 45mm 25mm',
+            background: 'white',
+            fontFamily: 'Arial, Helvetica, sans-serif',
+            fontSize: '11pt',
+            lineHeight: '1.45',
+            color: '#111',
+            boxSizing: 'border-box',
+            position: 'relative'
+          }}
+        >
+          <div className="page-content">
+            {/* Großer Header mit Logo */}
+            <div className="page-header">
+              {/* Logo wenn vorhanden */}
+              {firmenDaten.logo && (
+                <div style={{ 
+                  display: 'flex',
+                  justifyContent: firmenDaten.logoPosition === 'mitte' ? 'center' : firmenDaten.logoPosition === 'rechts' ? 'flex-end' : 'flex-start',
+                  marginBottom: '4mm'
+                }}>
+                  <img src={firmenDaten.logo} alt="Logo" style={{ 
+                    width: `${firmenDaten.logoBreite || 40}mm`, 
+                    height: `${firmenDaten.logoHoehe || 15}mm`,
+                    objectFit: 'contain'
+                  }} />
+                </div>
+              )}
+              {/* Firmenname nur anzeigen wenn kein Logo */}
+              {!firmenDaten.logo && (
+                <div style={{ fontSize: '28pt', fontWeight: 'bold', color: firmenDaten.primaerFarbe, marginBottom: '14mm', textAlign: 'center', letterSpacing: '1px' }}>
+                  {firmenDaten.firmenname.toUpperCase()}
+                </div>
+              )}
+
+              {/* Absenderzeile klein */}
+              <div style={{ fontSize: '9pt', color: firmenDaten.briefkopfFarbe || '#444', marginBottom: '14mm', borderBottom: '1px solid #ccc', paddingBottom: '2mm', textAlign: 'left' }}>
+                {firmenDaten.briefkopfAbsender === "firmenname" ? firmenDaten.firmenname : firmenDaten.inhaberName} · {firmenDaten.strasse} · {firmenDaten.plz} {firmenDaten.ort}
+              </div>
+            </div>
+
+            {/* Anschrift – zeilenweise (DIN-konform) */}
+            <div style={{ marginBottom: '18mm', width: '90mm', lineHeight: '1.6' }}>
+              {aktivesDok.kunde.name && <div style={{ fontWeight: 'bold' }}>{aktivesDok.kunde.name}</div>}
+              {aktivesDok.kunde.strasse && <div>{aktivesDok.kunde.strasse}</div>}
+              {(aktivesDok.kunde.plz || aktivesDok.kunde.ort) && <div>{[aktivesDok.kunde.plz, aktivesDok.kunde.ort].filter(Boolean).join(' ')}</div>}
+            </div>
+
+            {/* Rechnungskopf */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12mm', paddingBottom: '4mm' }}>
+              <div>
+                <select 
+                  className="no-print"
+                  value={aktivesDok.typ} 
+                  onChange={e => setAktivesDok({...aktivesDok, typ: e.target.value})} 
+                  style={{ fontSize: '16pt', fontWeight: 'bold', color: firmenDaten.primaerFarbe, border: `2px solid ${firmenDaten.primaerFarbe}`, padding: '4px 8px', borderRadius: '4px', marginBottom: '4px', cursor: 'pointer' }}
+                >
+                  <option value="RECHNUNG">RECHNUNG</option>
+                  <option value="ABSCHLAGSRECHNUNG">ABSCHLAGSRECHNUNG</option>
+                  <option value="ANGEBOT">ANGEBOT</option>
+                  <option value="LEERES_DOKUMENT">LEERES DOKUMENT</option>
+                </select>
+                {aktivesDok.typ === "LEERES_DOKUMENT" ? (
+                  <input 
+                    type="text" 
+                    style={{ fontSize: '22pt', fontWeight: 'bold', color: firmenDaten.primaerFarbe, margin: 0, border: `1px dashed ${firmenDaten.primaerFarbe}`, padding: '2px 8px', borderRadius: '4px', width: '100%' }}
+                    value={aktivesDok.betreff || ""}
+                    onChange={e => setAktivesDok({...aktivesDok, betreff: e.target.value})}
+                    placeholder="Betreff eingeben..."
+                  />
+                ) : (
+                  <h1 style={{ fontSize: '22pt', fontWeight: 'bold', color: firmenDaten.primaerFarbe, margin: 0 }}>{aktivesDok.typ === "LEERES_DOKUMENT" ? "LEERES DOKUMENT" : aktivesDok.typ}</h1>
+                )}
+              </div>
+              <div style={{ textAlign: 'right', fontSize: '10pt' }}>
+                <div>{aktivesDok.typ === "ANGEBOT" ? "Angebots" : aktivesDok.typ === "ABSCHLAGSRECHNUNG" ? "Abschlagsrechnungs" : aktivesDok.typ === "LEERES_DOKUMENT" ? "Dok." : "Rechnungs"}-Nr.: <input style={{ border: 'none', borderBottom: '1px dashed #666', outline: 'none', width: '110px', textAlign: 'right' }} value={aktivesDok.nummer} onChange={e => setAktivesDok({...aktivesDok, nummer: e.target.value})} /></div>
+                <div>Datum: <input style={{ border: 'none', borderBottom: '1px dashed #666', outline: 'none', width: '90px', textAlign: 'right' }} value={aktivesDok.datum} onChange={e => setAktivesDok({...aktivesDok, datum: e.target.value})} /></div>
+                {aktivesDok.typ !== "ANGEBOT" && aktivesDok.typ !== "LEERES_DOKUMENT" && (
+                  <div style={{ fontSize: '10pt' }}>Leistungszeitraum: <input style={{ border: 'none', borderBottom: '1px dashed #666', outline: 'none', width: '70px', textAlign: 'right' }} placeholder="von" value={aktivesDok.leistungszeitraum?.von || ""} onChange={e => setAktivesDok({...aktivesDok, leistungszeitraum: {...(aktivesDok.leistungszeitraum || {}), von: e.target.value}})} /> - <input style={{ border: 'none', borderBottom: '1px dashed #666', outline: 'none', width: '70px', textAlign: 'right' }} placeholder="bis" value={aktivesDok.leistungszeitraum?.bis || ""} onChange={e => setAktivesDok({...aktivesDok, leistungszeitraum: {...(aktivesDok.leistungszeitraum || {}), bis: e.target.value}})} /></div>
+                )}
+              </div>
+            </div>
+
+            {/* Arbeitsort - editierbar (nicht bei Leeres Dokument) */}
+            {aktivesDok.typ !== "LEERES_DOKUMENT" && (
+            <div style={{ marginBottom: '8mm', fontSize: '10pt', color: '#444' }}>
+              <input 
+                type="text" 
+                style={{ width: '100%', border: '1px solid #ccc', padding: '4px 6px', fontSize: '10pt', borderRadius: '3px', outline: 'none' }}
+                value={aktivesDok.arbeitsort || (aktivesDok.typ === "ANGEBOT" 
+                  ? (aktivesDok.kunde.strasse && aktivesDok.kunde.ort ? `Für die Arbeiten in der ${aktivesDok.kunde.strasse} in ${aktivesDok.kunde.ort}.` : aktivesDok.kunde.strasse ? `Für die Arbeiten in der ${aktivesDok.kunde.strasse}.` : 'Für die Arbeiten in der Straße des Kunden.')
+                  : (aktivesDok.kunde.strasse && aktivesDok.kunde.ort ? `Für die ausgeführten Arbeiten in der ${aktivesDok.kunde.strasse} in ${aktivesDok.kunde.ort}.` : aktivesDok.kunde.strasse ? `Für die ausgeführten Arbeiten in der ${aktivesDok.kunde.strasse}.` : 'Für die ausgeführten Arbeiten in der Straße des Kunden.'))}
+                onChange={e => setAktivesDok({...aktivesDok, arbeitsort: e.target.value})}
+                placeholder="Ort der Arbeiten"
+              />
+            </div>
+            )}
+
+            {/* Freitext und Signatur für Leeres Dokument */}
+            {aktivesDok.typ === "LEERES_DOKUMENT" && (
+              <>
+                <div style={{ marginBottom: '8mm' }}>
+                  <textarea
+                    style={{ 
+                      width: '100%', 
+                      minHeight: '300px', 
+                      border: '1px solid #ccc', 
+                      padding: '8px 12px', 
+                      fontSize: '11pt', 
+                      borderRadius: '4px', 
+                      outline: 'none',
+                      lineHeight: '1.6',
+                      fontFamily: 'inherit',
+                      resize: 'vertical'
+                    }}
+                    value={aktivesDok.freitext || ""}
+                    onChange={e => setAktivesDok({...aktivesDok, freitext: e.target.value})}
+                    placeholder="Geben Sie hier Ihren Text ein..."
+                  />
+                </div>
+                
+                {/* Signatur-Optionen */}
+                <div className="no-print" style={{ marginBottom: '8mm', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '4px', border: '1px solid #ddd' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '10pt', color: '#333' }}>Signaturfelder (optional)</div>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '10pt', marginBottom: '6px' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={aktivesDok.signaturKunde || false}
+                      onChange={e => setAktivesDok({...aktivesDok, signaturKunde: e.target.checked})}
+                      style={{ marginRight: '8px', width: '18px', height: '18px' }}
+                    />
+                    <span style={{ color: '#333' }}>
+                      <strong>Unterschrift Kunde</strong> – Feld für Kundenunterschrift
+                    </span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', fontSize: '10pt' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={aktivesDok.signaturAbsender || false}
+                      onChange={e => setAktivesDok({...aktivesDok, signaturAbsender: e.target.checked})}
+                      style={{ marginRight: '8px', width: '18px', height: '18px' }}
+                    />
+                    <span style={{ color: '#333' }}>
+                      <strong>{firmenDaten.inhaberName}</strong> – Ihre Unterschrift
+                    </span>
+                  </label>
+                </div>
+                
+                {/* Signaturfelder-Vorschau */}
+                {(aktivesDok.signaturKunde || aktivesDok.signaturAbsender) && (
+                  <div style={{ marginTop: '10mm', marginBottom: '8mm', display: 'flex', justifyContent: 'flex-start', gap: '20mm' }}>
+                    {aktivesDok.signaturAbsender && (
+                      <div style={{ flex: '0 0 45%' }}>
+                        <div style={{ fontSize: '9pt', color: '#666', marginBottom: '2mm' }}>{firmenDaten.inhaberName}</div>
+                        <canvas
+                          ref={signaturCanvasRef}
+                          width={200}
+                          height={80}
+                          style={{ 
+                            border: '1px solid #ccc', 
+                            borderRadius: '4px', 
+                            backgroundColor: '#fff',
+                            touchAction: 'none',
+                            cursor: 'crosshair'
+                          }}
+                          onMouseDown={startDrawing}
+                          onMouseMove={draw}
+                          onMouseUp={stopDrawing}
+                          onMouseLeave={stopDrawing}
+                          onTouchStart={startDrawing}
+                          onTouchMove={draw}
+                          onTouchEnd={stopDrawing}
+                        />
+                        <div style={{ marginTop: '2mm', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <button 
+                            type="button" 
+                            onClick={clearSignaturCanvas}
+                            style={{ fontSize: '8pt', padding: '2px 8px', cursor: 'pointer', backgroundColor: '#f0f0f0', border: '1px solid #ccc', borderRadius: '3px' }}
+                          >
+                            Löschen
+                          </button>
+                          <span style={{ fontSize: '8pt', color: '#666' }}>Ort:</span>
+                          <input 
+                            type="text" 
+                            value={aktivesDok.signaturAbsenderOrt || ""}
+                            onChange={e => setAktivesDok({...aktivesDok, signaturAbsenderOrt: e.target.value})}
+                            placeholder="Ort"
+                            style={{ 
+                              fontSize: '8pt', 
+                              padding: '2px 6px', 
+                              border: '1px solid #ccc', 
+                              borderRadius: '3px',
+                              width: '80px'
+                            }}
+                          />
+                          <span style={{ fontSize: '8pt', color: '#666' }}>Datum:</span>
+                          <input 
+                            type="text" 
+                            value={aktivesDok.signaturAbsenderDatum || ""}
+                            onChange={e => setAktivesDok({...aktivesDok, signaturAbsenderDatum: e.target.value})}
+                            placeholder="TT.MM.JJJJ"
+                            style={{ 
+                              fontSize: '8pt', 
+                              padding: '2px 6px', 
+                              border: '1px solid #ccc', 
+                              borderRadius: '3px',
+                              width: '80px'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {aktivesDok.signaturKunde && (
+                      <div style={{ flex: '0 0 45%' }}>
+                        <div style={{ borderTop: '1px solid #333', paddingTop: '2mm', marginTop: '62px' }}>
+                          <div style={{ fontSize: '9pt', color: '#666' }}>Unterschrift Kunde</div>
+                          <div style={{ fontSize: '8pt', color: '#999', marginTop: '1mm' }}>Ort, Datum: ________________</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Tabelle (nicht bei Leeres Dokument) */}
+            {aktivesDok.typ !== "LEERES_DOKUMENT" && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12mm', fontSize: '10pt' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #006666', textAlign: 'left' }}>
+                  <th className="no-print" style={{ padding: '3mm 0', width: '30px' }}>Ü</th>
+                  {aktivesDok.typ === "ANGEBOT" && <th className="no-print" style={{ padding: '3mm 0', width: '30px' }}>Opt.</th>}
+                  <th style={{ padding: '3mm 0', width: '15mm' }}>Pos.</th>
+                  <th style={{ padding: '3mm 0' }}>Beschreibung</th>
+                  <th style={{ padding: '3mm 0', textAlign: 'right', width: '20mm' }}>Menge</th>
+                  <th style={{ padding: '3mm 0', textAlign: 'right', width: '18mm' }}>Einheit</th>
+                  <th style={{ padding: '3mm 0', textAlign: 'right', width: '28mm' }}>Einzelpreis €</th>
+                  <th style={{ padding: '3mm 0', textAlign: 'right', width: '28mm' }}>Gesamt €</th>
+                  <th className="no-print" style={{ width: '20px' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {aktivesDok.positionen.map((p, i) => {
+                  // Berechne die tatsächliche Positionsnummer (ohne Überschriften und optionale)
+                  const posNummer = aktivesDok.positionen.slice(0, i).filter(pos => !pos.isUeberschrift && !pos.isOptional).length + (p.isUeberschrift || p.isOptional ? 0 : 1);
+                  const posLabel = p.isOptional ? "Opt." : (p.isUeberschrift ? '' : posNummer);
+                  const gesamtBetrag = (parseVal(p.menge) * parseVal(p.preis)).toFixed(2) + ' €';
+                  const gesamtAnzeige = p.isOptional ? `(${gesamtBetrag})` : gesamtBetrag;
+                  return (
+                  <tr key={p.id} style={{ borderBottom: '1px solid #eee' }}>
+                    <td className="no-print" style={{ padding: '3mm 0', textAlign: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={p.isUeberschrift || false}
+                        onChange={e => {
+                          const n = [...aktivesDok.positionen];
+                          n[i].isUeberschrift = e.target.checked;
+                          if (e.target.checked) n[i].isOptional = false; // Überschrift kann nicht optional sein
+                          setAktivesDok({...aktivesDok, positionen: n});
+                        }}
+                        title="Als Überschrift formatieren"
+                      />
+                    </td>
+                    {aktivesDok.typ === "ANGEBOT" && (
+                      <td className="no-print" style={{ padding: '3mm 0', textAlign: 'center' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={p.isOptional || false}
+                          disabled={p.isUeberschrift}
+                          onChange={e => {
+                            const n = [...aktivesDok.positionen];
+                            n[i].isOptional = e.target.checked;
+                            setAktivesDok({...aktivesDok, positionen: n});
+                          }}
+                          title="Als optionale Position markieren"
+                        />
+                      </td>
+                    )}
+                    <td style={{ padding: '3mm 0' }}>{posLabel}</td>
+                    <td style={{ padding: '3mm 2mm 3mm 0' }}>
+                      <textarea 
+                        style={{ width: '100%', border: 'none', outline: 'none', resize: 'vertical', background: 'transparent', minHeight: '40px', fontWeight: p.isUeberschrift ? 'bold' : 'normal' }} 
+                        rows={Math.max(2, Math.ceil(p.name.length / 50))} 
+                        value={p.name} 
+                        onChange={e => {
+                          const n = [...aktivesDok.positionen];
+                          n[i].name = e.target.value;
+                          setAktivesDok({...aktivesDok, positionen: n});
+                        }} 
+                      />
+                    </td>
+                    <td style={{ padding: '3mm 0', textAlign: 'right' }}>
+                      {!p.isUeberschrift && (
+                        <input style={{ width: '100%', textAlign: 'right', border: 'none', outline: 'none', background: 'transparent' }} value={p.menge} onChange={e => {
+                          const n = [...aktivesDok.positionen];
+                          n[i].menge = e.target.value;
+                          setAktivesDok({...aktivesDok, positionen: n});
+                        }} />
+                      )}
+                    </td>
+                    <td style={{ padding: '3mm 0', textAlign: 'right' }}>
+                      {!p.isUeberschrift && (
+                        <input style={{ width: '100%', textAlign: 'right', border: 'none', outline: 'none', background: 'transparent' }} value={p.einheit} onChange={e => {
+                          const n = [...aktivesDok.positionen];
+                          n[i].einheit = e.target.value;
+                          setAktivesDok({...aktivesDok, positionen: n});
+                        }} />
+                      )}
+                    </td>
+                    <td style={{ padding: '3mm 0', textAlign: 'right' }}>
+                      {!p.isUeberschrift && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '2px' }}>
+                          <input style={{ width: '90%', textAlign: 'right', border: 'none', outline: 'none', background: 'transparent' }} value={p.preis} onChange={e => {
+                            const n = [...aktivesDok.positionen];
+                            n[i].preis = e.target.value;
+                            setAktivesDok({...aktivesDok, positionen: n});
+                          }} />
+                          <span>€</span>
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ padding: '3mm 0', textAlign: 'right', fontWeight: 'bold' }}>
+                      {!p.isUeberschrift && gesamtAnzeige}
+                    </td>
+                    <td className="no-print" style={{ padding: '3mm 0' }}>
+                      <div className="flex gap-1 justify-end" style={{ opacity: 0.3 }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.3}>
+                        <button onClick={() => {
+                          if (i > 0) {
+                            const n = [...aktivesDok.positionen];
+                            [n[i-1], n[i]] = [n[i], n[i-1]];
+                            setAktivesDok({...aktivesDok, positionen: n});
+                          }
+                        }} className="text-teal-600" style={{ fontSize: '18px', fontWeight: 'bold', lineHeight: '1', padding: '2px 4px', cursor: 'pointer' }}>↑</button>
+                        <button onClick={() => {
+                          if (i < aktivesDok.positionen.length - 1) {
+                            const n = [...aktivesDok.positionen];
+                            [n[i+1], n[i]] = [n[i], n[i+1]];
+                            setAktivesDok({...aktivesDok, positionen: n});
+                          }
+                        }} className="text-teal-600" style={{ fontSize: '18px', fontWeight: 'bold', lineHeight: '1', padding: '2px 4px', cursor: 'pointer' }}>↓</button>
+                        <button onClick={() => {
+                          const n = aktivesDok.positionen.filter((_, idx) => idx !== i);
+                          setAktivesDok({...aktivesDok, positionen: n});
+                        }} className="text-red-600" style={{ fontSize: '20px', fontWeight: 'bold', lineHeight: '1', padding: '2px 4px', cursor: 'pointer' }}>×</button>
+                      </div>
+                    </td>
+                  </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            )}
+
+            {/* Summen (nicht bei Leeres Dokument) */}
+            {aktivesDok.typ !== "LEERES_DOKUMENT" && (
+            <div style={{ marginLeft: 'auto', width: '90mm', fontSize: '10pt' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2mm 0', borderTop: '1px solid #006666' }}>
+                <span>Nettobetrag</span><span>{(netto - abschlagBetrag).toFixed(2)} €</span>
+              </div>
+              {rabattBetrag > 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1mm 0' }}>
+                    <input 
+                      type="text" 
+                      style={{ width: '180px', padding: '2px 6px', fontSize: '10pt', border: '1px solid #999', borderRadius: '3px', color: '#006666' }}
+                      value={aktivesDok.rabattBeschreibung || "Nachlass"}
+                      onChange={e => setAktivesDok({...aktivesDok, rabattBeschreibung: e.target.value})}
+                      placeholder="z.B. Nachlass für Barzahlung"
+                    />
+                    <span style={{ marginLeft: '4px' }}>:</span>
+                    <input 
+                      type="text" 
+                      style={{ width: '120px', padding: '2px 6px', fontSize: '10pt', border: '1px solid #999', borderRadius: '3px', textAlign: 'right' }}
+                      value={aktivesDok.rabatt || "0"}
+                      onChange={e => setAktivesDok({...aktivesDok, rabatt: e.target.value})}
+                      placeholder="0,00"
+                    />
+                    <span style={{ color: '#006666', marginLeft: '4px' }}>€</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2mm 0', borderTop: '1px solid #ccc', fontWeight: 'bold' }}>
+                    <span>Zwischensumme</span><span>{nettoNachRabatt.toFixed(2)} €</span>
+                  </div>
+                </>
+              )}
+              {rabattBetrag === 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1mm 0' }}>
+                  <input 
+                    type="text" 
+                    style={{ width: '180px', padding: '2px 6px', fontSize: '10pt', border: '1px solid #999', borderRadius: '3px', color: '#006666' }}
+                    value={aktivesDok.rabattBeschreibung || "Nachlass"}
+                    onChange={e => setAktivesDok({...aktivesDok, rabattBeschreibung: e.target.value})}
+                    placeholder="z.B. Nachlass für Barzahlung"
+                  />
+                  <span style={{ marginLeft: '4px' }}>:</span>
+                  <input 
+                    type="text" 
+                    style={{ width: '120px', padding: '2px 6px', fontSize: '10pt', border: '1px solid #999', borderRadius: '3px', textAlign: 'right' }}
+                    value={aktivesDok.rabatt || "0"}
+                    onChange={e => setAktivesDok({...aktivesDok, rabatt: e.target.value})}
+                    placeholder="0,00"
+                  />
+                  <span style={{ color: '#006666', marginLeft: '4px' }}>€</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '1mm 0' }}>
+                <span>MwSt. 19 %</span><span>{mwst.toFixed(2)} €</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12pt', fontWeight: 'bold', padding: '4mm 0 0 0', borderTop: '2px solid #006666' }}>
+                <span>{aktivesDok.typ === "ANGEBOT" ? "Angebotssumme" : aktivesDok.typ === "ABSCHLAGSRECHNUNG" ? "Abschlagsrechnungsbetrag" : "Rechnungsbetrag"}</span><span>{brutto.toFixed(2)} €</span>
+              </div>
+              {aktivesDok.typ === "RECHNUNG" && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3mm 0 0 0' }}>
+                  <span style={{ fontSize: '10pt', color: '#006666' }}>Abzgl. Abschlagsrechnung(en):</span>
+                  <input 
+                    type="text" 
+                    style={{ width: '120px', padding: '2px 6px', fontSize: '10pt', border: '1px solid #999', borderRadius: '3px', textAlign: 'right' }}
+                    value={aktivesDok.abschlagsrechnungBetrag || "0"}
+                    onChange={e => setAktivesDok({...aktivesDok, abschlagsrechnungBetrag: e.target.value})}
+                    placeholder="0,00"
+                  />
+                  <span style={{ fontSize: '10pt', color: '#006666', marginLeft: '4px' }}>€</span>
+                </div>
+              )}
+              {aktivesDok.typ === "RECHNUNG" && abschlagsrechnungBetrag > 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13pt', fontWeight: 'bold', padding: '3mm 0 0 0', borderTop: '1px dashed #006666' }}>
+                    <span>Restbetrag</span><span>{restbetragNachAbschlag.toFixed(2)} €</span>
+                  </div>
+                </>
+              )}
+              {abschlagProzent > 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3mm 0 0 0', color: '#006666' }}>
+                    <span>Abschlag {abschlagProzent} %</span><span>-{abschlagBetrag.toFixed(2)} €</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13pt', fontWeight: 'bold', padding: '2mm 0', borderTop: '1px dashed #006666' }}>
+                    <span>Restbetrag</span><span>{restBrutto.toFixed(2)} €</span>
+                  </div>
+                </>
+              )}
+            </div>
+            )}
+          
+            {/* Zahlungsbedingungen/Fußtext (nicht bei Leeres Dokument) */}
+            {aktivesDok.typ !== "LEERES_DOKUMENT" && (
+            <div style={{ marginTop: '6mm', marginBottom: '6mm', fontSize: '10pt', color: '#444' }}>
+              <br/>
+              {aktivesDok.typ === "ANGEBOT" ? (
+                <>
+                  {(firmenDaten.angebotHinweis || "Unvorhergesehene Arbeiten werden mit {stundensatz},- €/Std. abgerechnet.").replace('{stundensatz}', firmenDaten.stundensatz || 59)}<br/>
+                  <br/>
+                  Dieses Angebot ist {firmenDaten.angebotsgueltigkeit || 30} Tage ab Ausstellungsdatum gültig.<br/>
+                  <br/>
+                  Wir freuen uns auf Ihre Auftragserteilung und stehen für Rückfragen gerne zur Verfügung.<br/>
+                </>
+              ) : (
+                <>
+                  Zahlungsbedingungen: Zahlung innerhalb von {firmenDaten.zahlungsziel || 10} Tagen ab Rechnungseingang ohne Abzüge.<br/>
+                  <br/>
+                  {/* Optionales Eingabefeld für zusätzlichen Hinweis */}
+                  <div className="no-print" style={{ marginBottom: '3mm' }}>
+                    <textarea
+                      style={{ 
+                        width: '100%', 
+                        padding: '6px 8px', 
+                        fontSize: '10pt', 
+                        border: '1px dashed #999', 
+                        borderRadius: '4px',
+                        backgroundColor: '#f9f9f9',
+                        color: '#444',
+                        resize: 'vertical',
+                        minHeight: '40px'
+                      }}
+                      value={aktivesDok.rechnungshinweis || ""}
+                      onChange={e => setAktivesDok({...aktivesDok, rechnungshinweis: e.target.value})}
+                      placeholder="Zusätzlicher Hinweis (optional) - z.B. Skonto-Regelung, Lieferhinweise..."
+                    />
+                  </div>
+                  {aktivesDok.rechnungshinweis && (
+                    <span className="print-only" style={{ whiteSpace: 'pre-wrap' }}>{aktivesDok.rechnungshinweis}<br/><br/></span>
+                  )}
+                  Bitte überweisen Sie den Rechnungsbetrag unter Angabe der Rechnungsnummer auf das unten angegebene Konto.<br/>
+                </>
+              )}
+              <br/>
+              Mit freundlichen Grüßen<br/>
+              {firmenDaten.inhaberName}
+            </div>
+            )}
+
+          </div>
+
+          {/* Fixierte Fußzeile – erscheint auf jeder Seite im Druck */}
+          <div className="page-footer">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8mm', fontSize: '8.5pt' }}>
+              <div style={{ textAlign: 'left' }}>
+                {firmenDaten.firmenname}<br/>
+                {firmenDaten.strasse}<br/>
+                {firmenDaten.plz} {firmenDaten.ort}<br/>
+                {firmenDaten.land}
+              </div>
+              <div style={{ textAlign: 'left' }}>
+                Tel. {firmenDaten.telefon}<br/>
+                E-Mail: {firmenDaten.email}<br/>
+                Web: {firmenDaten.website}
+              </div>
+              <div style={{ textAlign: 'left' }}>
+                Steuer-Nr. {firmenDaten.steuernummer}<br/>
+                Inhaber: {firmenDaten.inhaberName}
+              </div>
+              <div style={{ textAlign: 'left' }}>
+                Bank: {firmenDaten.bankName}<br/>
+                IBAN: {firmenDaten.iban}<br/>
+                BIC: {firmenDaten.bic}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 flex justify-center no-print">
+          <button
+            onClick={createPDF}
+            className="bg-emerald-700 text-white px-10 py-4 rounded font-bold uppercase shadow-lg hover:bg-emerald-800"
+          >
+            � PDF erstellen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>

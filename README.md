@@ -1,2 +1,1 @@
-# Rechnungsprogramm
-Rechnungsprogramm mit besonderen Fokus auf Datenschutz. Keine Daten verlassen das Gerät und landen im Netz
+"Copyright © 2026 Michael Starkulla. All rights reserved. No unauthorized copying or distribution.
