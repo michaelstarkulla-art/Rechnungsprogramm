@@ -2011,6 +2011,7 @@ function VaultProvider({ children }) {
   
   const debounceTimerRef = useRef(null);
   const pendingStateRef = useRef(null);
+  const hasCheckedCloud = useRef(false);
   
   // Prüfe beim Start ob ein Vault existiert
   useEffect(() => {
@@ -2594,12 +2595,14 @@ function VaultProvider({ children }) {
   // Effect: Cloud-Check nach erfolgreichem Login
   useEffect(() => {
     if (isUnlocked && cloudConfig.enabled) {
-      // Kurze Verzögerung damit UI erst fertig lädt
-      const timer = setTimeout(() => {
-        checkCloudUpdate();
-      }, 1500);
+      // Verhindere doppelten Aufruf
+      if (hasCheckedCloud.current) return;
       
-      return () => clearTimeout(timer);
+      hasCheckedCloud.current = true;
+      checkCloudUpdate();
+    } else if (!isUnlocked) {
+      // Reset beim Ausloggen, damit beim nächsten Login wieder geprüft wird
+      hasCheckedCloud.current = false;
     }
   }, [isUnlocked, cloudConfig.enabled, checkCloudUpdate]);
   
