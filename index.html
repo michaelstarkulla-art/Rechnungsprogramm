@@ -2409,29 +2409,29 @@ function VaultProvider({ children }) {
       if (!authResponse.ok) throw new Error('Authentifizierung fehlgeschlagen');
       const { downloadUrl } = await authResponse.json();
 
-      // 2. Datei als ArrayBuffer laden
+      // 2. Datei herunterladen
       loading.updateMessage('📥 Lade Daten...');
       const fileResponse = await fetch(downloadUrl);
       if (!fileResponse.ok) throw new Error('Download fehlgeschlagen');
+      
+      // Als ArrayBuffer lesen (wichtig für Binärdaten!)
       const encryptedBuffer = await fileResponse.arrayBuffer();
 
-      // 3. Direkt entschlüsseln (ohne Wrapper-Zwang)
+      // 3. DIREKT entschlüsseln (Umgeht importFixedSizeBackup!)
       loading.updateMessage('🔓 Entschlüssele...');
-      // Wir nutzen direkt den Worker, um Rohdaten zu akzeptieren
       let data = await workerDecrypt(encryptedBuffer, SecureVault.encryptionKey, true);
 
-      // 4. Format-Weiche: Ist es ein Export-Container oder Live-Daten?
-      if (data.f === 'fsb' && data.d) {
-        console.log('📦 Export-Container erkannt, entpacke...');
+      // 4. Prüfen ob es vielleicht doch ein Export-Container ist (Wrapper entfernen)
+      if (data && data.f === 'fsb' && data.d) {
         data = data.d;
       }
 
-      // 5. Validierung
-      if (!data.kunden && !data.material) {
-        throw new Error('Entschlüsselte Daten enthalten keine Kunden oder Material');
+      // 5. Inhalt prüfen
+      if (!data || (!data.kunden && !data.material)) {
+        throw new Error('Entschlüsselte Daten sind leer oder ungültig');
       }
 
-      // 6. State aktualisieren
+      // 6. State wiederherstellen
       loading.updateMessage('💾 Speichere...');
       const newState = {
           ...DEFAULT_STATE,
@@ -2449,17 +2449,17 @@ function VaultProvider({ children }) {
       loading.close();
       setSyncStatus('success');
       setTimeout(() => setSyncStatus('idle'), 3000);
-      alert('✅ Wiederherstellung erfolgreich!');
+      alert('✅ Cloud-Backup erfolgreich wiederhergestellt!');
 
     } catch (err) {
       loading.close();
       console.error(err);
       setSyncStatus('error');
-      // Benutzerfreundliche Fehlermeldung bei falschem Key (oft Crypto-Fehler)
-      if (err.name === 'OperationError' || err.message.includes('Mac check failed')) {
-        alert('❌ Entschlüsselung fehlgeschlagen.\nDas Cloud-Backup wurde mit einem anderen Passwort erstellt.');
+      
+      if (err.name === 'OperationError' || err.message.includes('Check failed')) {
+         alert('❌ Entschlüsselung fehlgeschlagen.\nFalsches Passwort oder Datei beschädigt.');
       } else {
-        alert('Fehler: ' + err.message);
+         alert('Fehler: ' + err.message);
       }
     }
   }, [cloudConfig, updateState, forceSave]);
