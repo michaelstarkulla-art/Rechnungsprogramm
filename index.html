@@ -2464,6 +2464,145 @@ function VaultProvider({ children }) {
     }
   }, [cloudConfig, updateState, forceSave]);
   
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // CLOUD-UPDATE CHECK - Prüft beim Start ob neuere Daten in der Cloud sind
+  // ═══════════════════════════════════════════════════════════════════════════════
+  
+  const checkCloudUpdate = useCallback(async () => {
+    // Nur prüfen wenn Cloud konfiguriert ist
+    if (!cloudConfig.enabled || !cloudConfig.licenseKey || !cloudConfig.workerUrl) {
+      return;
+    }
+    
+    if (!SecureVault.encryptionKey) {
+      return;
+    }
+    
+    try {
+      console.log('☁️ Prüfe auf Cloud-Updates...');
+      
+      // 1. Download-URL holen
+      const authResponse = await fetch(`${cloudConfig.workerUrl}/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ licenseKey: cloudConfig.licenseKey }),
+      });
+      
+      if (!authResponse.ok) {
+        console.log('☁️ Auth fehlgeschlagen, überspringe Cloud-Check');
+        return;
+      }
+      
+      const { downloadUrl } = await authResponse.json();
+      
+      // 2. Cloud-Daten herunterladen
+      const fileResponse = await fetch(downloadUrl);
+      
+      if (!fileResponse.ok) {
+        if (fileResponse.status === 404) {
+          console.log('☁️ Kein Cloud-Backup vorhanden');
+          return;
+        }
+        console.log('☁️ Download fehlgeschlagen:', fileResponse.status);
+        return;
+      }
+      
+      const encryptedBuffer = await fileResponse.arrayBuffer();
+      
+      // 3. Entschlüsseln
+      let cloudData = await workerDecrypt(encryptedBuffer, SecureVault.encryptionKey, true);
+      
+      // Falls Export-Container, entpacken
+      if (cloudData && cloudData.f === 'fsb' && cloudData.d) {
+        cloudData = cloudData.d;
+      }
+      
+      // 4. Validieren
+      if (!cloudData || (!cloudData.kunden && !cloudData.material)) {
+        console.log('☁️ Cloud-Daten ungültig oder leer');
+        return;
+      }
+      
+      // 5. Zeitstempel vergleichen
+      const cloudModified = cloudData.meta?.lastModified ? new Date(cloudData.meta.lastModified) : null;
+      const localModified = appState.meta?.lastModified ? new Date(appState.meta.lastModified) : null;
+      
+      if (!cloudModified) {
+        console.log('☁️ Cloud-Daten haben keinen Zeitstempel');
+        return;
+      }
+      
+      // Nur wenn Cloud NEUER ist (mindestens 1 Sekunde Unterschied)
+      if (localModified && cloudModified <= localModified) {
+        console.log('☁️ Lokale Daten sind aktuell oder neuer');
+        return;
+      }
+      
+      // 6. Benutzer fragen
+      const cloudDateStr = cloudModified.toLocaleString('de-DE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      const localDateStr = localModified ? localModified.toLocaleString('de-DE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) : 'unbekannt';
+      
+      const shouldRestore = confirm(
+        `☁️ Neueres Cloud-Backup gefunden!\n\n` +
+        `Cloud: ${cloudDateStr}\n` +
+        `Lokal: ${localDateStr}\n\n` +
+        `Möchten Sie das Cloud-Backup laden?\n` +
+        `(Lokale Änderungen werden überschrieben)`
+      );
+      
+      if (!shouldRestore) {
+        console.log('☁️ Benutzer hat Cloud-Restore abgelehnt');
+        return;
+      }
+      
+      // 7. Cloud-Daten übernehmen
+      const newState = {
+        ...DEFAULT_STATE,
+        kunden: cloudData.kunden || [],
+        material: cloudData.material || [],
+        rechnungen: cloudData.rechnungen || [],
+        angebote: cloudData.angebote || [],
+        firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(cloudData.firmenDaten || {}) },
+        meta: { ...cloudData.meta, restoredFrom: 'cloud-auto-check' }
+      };
+      
+      updateState(newState);
+      await forceSave();
+      
+      console.log('☁️ Cloud-Daten erfolgreich geladen');
+      alert('✅ Cloud-Backup wurde geladen!');
+      
+    } catch (err) {
+      // Silent fail - nur loggen, nicht den User stören
+      console.error('☁️ Cloud-Check Fehler (silent):', err.message);
+    }
+  }, [cloudConfig, appState.meta?.lastModified, updateState, forceSave]);
+  
+  // Effect: Cloud-Check nach erfolgreichem Login
+  useEffect(() => {
+    if (isUnlocked && cloudConfig.enabled) {
+      // Kurze Verzögerung damit UI erst fertig lädt
+      const timer = setTimeout(() => {
+        checkCloudUpdate();
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isUnlocked, cloudConfig.enabled, checkCloudUpdate]);
+  
   const value = {
     isUnlocked,
     isLoading,
