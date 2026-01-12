@@ -2390,14 +2390,13 @@ function VaultProvider({ children }) {
       return;
     }
     
-    // Sicherheitsfrage vor dem Überschreiben
+    // Sicherheitsfrage
     if (!confirm('⚠️ Achtung!\n\nAlle lokalen Daten werden mit dem Cloud-Backup überschrieben.\n\nFortfahren?')) {
       return;
     }
     
     setSyncStatus('downloading');
     setLastSyncError(null);
-    
     const loading = showLoadingDialog('☁️ Lade Backup aus Cloud...');
     
     try {
@@ -2411,24 +2410,22 @@ function VaultProvider({ children }) {
       if (!authResponse.ok) throw new Error('Authentifizierung fehlgeschlagen');
       const { downloadUrl } = await authResponse.json();
 
-      // 2. Datei laden (als TEXT, wichtig für Base64!)
+      // 2. Datei laden (als BINÄR-BUFFER, nicht als Text!)
       loading.updateMessage('📥 Lade Daten...');
       const fileResponse = await fetch(downloadUrl);
       if (!fileResponse.ok) throw new Error('Download fehlgeschlagen');
 
-      const backupText = await fileResponse.text();
+      // WICHTIG: ArrayBuffer für Binärdaten nutzen
+      const encryptedBuffer = await fileResponse.arrayBuffer();
 
-      // 3. Format prüfen
-      if (!backupText.startsWith('VAULT5MB:')) {
-         throw new Error('Ungültiges Format: Datei beginnt nicht mit VAULT5MB');
-      }
+      console.log('Empfangene Bytes:', encryptedBuffer.byteLength);
 
-      // 4. Entschlüsseln
+      // 3. Entschlüsseln (importFixedSizeBackup kann ArrayBuffer verarbeiten)
       loading.updateMessage('🔓 Entschlüssele...');
-      const data = await importFixedSizeBackup(backupText, SecureVault.encryptionKey);
+      const data = await importFixedSizeBackup(encryptedBuffer, SecureVault.encryptionKey);
 
-      // 5. Daten prüfen & State aktualisieren
-      if (!data.kunden && !data.material) throw new Error('Entschlüsselung leer');
+      // 4. Validieren & Speichern
+      if (!data.kunden && !data.material) throw new Error('Entschlüsselte Daten sind leer');
 
       const newState = {
           ...DEFAULT_STATE,
