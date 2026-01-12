@@ -2390,7 +2390,7 @@ function VaultProvider({ children }) {
       return;
     }
     
-    // Bestätigung vom Nutzer
+    // Sicherheitsfrage vor dem Überschreiben
     if (!confirm('⚠️ Achtung!\n\nAlle lokalen Daten werden mit dem Cloud-Backup überschrieben.\n\nFortfahren?')) {
       return;
     }
@@ -2401,96 +2401,58 @@ function VaultProvider({ children }) {
     const loading = showLoadingDialog('☁️ Lade Backup aus Cloud...');
     
     try {
-      // Schritt A: Authentifizierung und Download-URL holen
+      // 1. URL holen
       const authResponse = await fetch(`${cloudConfig.workerUrl}/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ licenseKey: cloudConfig.licenseKey }),
       });
       
-      if (!authResponse.ok) {
-        const errorData = await authResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || `Auth fehlgeschlagen: ${authResponse.status}`);
-      }
-      
+      if (!authResponse.ok) throw new Error('Authentifizierung fehlgeschlagen');
       const { downloadUrl } = await authResponse.json();
-      console.log('☁️ Download-URL erhalten');
-      
-      // Schritt B: Backup herunterladen
-      loading.updateMessage('☁️ Lade verschlüsselte Daten...');
-      const downloadResponse = await fetch(downloadUrl);
-      
-      if (!downloadResponse.ok) {
-        if (downloadResponse.status === 404) {
-          throw new Error('Kein Cloud-Backup vorhanden. Bitte erst synchronisieren.');
-        }
-        throw new Error(`Download fehlgeschlagen: ${downloadResponse.status}`);
+
+      // 2. Datei laden (als TEXT, wichtig für Base64!)
+      loading.updateMessage('📥 Lade Daten...');
+      const fileResponse = await fetch(downloadUrl);
+      if (!fileResponse.ok) throw new Error('Download fehlgeschlagen');
+
+      const backupText = await fileResponse.text();
+
+      // 3. Format prüfen
+      if (!backupText.startsWith('VAULT5MB:')) {
+         throw new Error('Ungültiges Format: Datei beginnt nicht mit VAULT5MB');
       }
-      
-      const encryptedBuffer = await downloadResponse.arrayBuffer();
-      console.log('☁️ Backup heruntergeladen:', encryptedBuffer.byteLength, 'Bytes');
-      
-      // Schritt C: Entschlüsseln
-      loading.updateMessage('🔓 Entschlüssele Backup...');
-      
-      let data;
-      
-      // Prüfe ob es Base64-Format ist (beginnt mit "VAULT5MB:")
-      const textDecoder = new TextDecoder();
-      const firstBytes = textDecoder.decode(encryptedBuffer.slice(0, 9));
-      
-      if (firstBytes === 'VAULT5MB:') {
-        // Base64-Format
-        const textContent = textDecoder.decode(encryptedBuffer);
-        data = await importFixedSizeBackup(textContent, SecureVault.encryptionKey);
-      } else if (encryptedBuffer.byteLength === VAULT_CONFIG.FIXED_SIZE) {
-        // Binary Fixed-Size Format
-        data = await importFixedSizeBackup(encryptedBuffer, SecureVault.encryptionKey);
-      } else {
-        // Versuche mit workerDecrypt (für andere Formate)
-        data = await workerDecrypt(encryptedBuffer, SecureVault.encryptionKey, true);
-        if (data.d) data = data.d; // Falls wrapped
-      }
-      
-      // Schritt D: Daten validieren
-      if (!data.kunden && !data.material) {
-        throw new Error('Ungültiges Backup-Format');
-      }
-      
-      // Schritt E: State aktualisieren
-      loading.updateMessage('💾 Aktualisiere lokale Daten...');
-      
+
+      // 4. Entschlüsseln
+      loading.updateMessage('🔓 Entschlüssele...');
+      const data = await importFixedSizeBackup(backupText, SecureVault.encryptionKey);
+
+      // 5. Daten prüfen & State aktualisieren
+      if (!data.kunden && !data.material) throw new Error('Entschlüsselung leer');
+
       const newState = {
-        ...DEFAULT_STATE,
-        kunden: data.kunden || [],
-        material: data.material || [],
-        rechnungen: data.rechnungen || [],
-        angebote: data.angebote || [],
-        firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(data.firmenDaten || {}) },
-        meta: {
-          version: 5,
-          created: data.meta?.created || new Date().toISOString(),
-          lastModified: new Date().toISOString(),
-          restoredFrom: 'cloud-restore'
-        }
+          ...DEFAULT_STATE,
+          kunden: data.kunden || [],
+          material: data.material || [],
+          rechnungen: data.rechnungen || [],
+          angebote: data.angebote || [],
+          firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(data.firmenDaten || {}) },
+          meta: { ...data.meta, restoredFrom: 'cloud-restore' }
       };
-      
+
       updateState(newState);
       await forceSave();
       
       loading.close();
       setSyncStatus('success');
       setTimeout(() => setSyncStatus('idle'), 3000);
-      
-      alert('✅ Cloud-Backup erfolgreich wiederhergestellt!');
-      
+      alert('✅ Wiederherstellung erfolgreich!');
+
     } catch (err) {
       loading.close();
-      console.error('☁️ Cloud-Restore Fehler:', err);
+      console.error(err);
       setSyncStatus('error');
-      setLastSyncError(err.message);
-      setTimeout(() => setSyncStatus('idle'), 5000);
-      alert('❌ Wiederherstellung fehlgeschlagen:\n' + err.message);
+      alert('Fehler: ' + err.message);
     }
   }, [cloudConfig, updateState, forceSave]);
   
