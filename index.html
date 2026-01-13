@@ -1948,7 +1948,7 @@ const DEFAULT_STATE = {
   material: [],
   rechnungen: [],
   angebote: [],
-  entwurf: null, // Aktuelles Dokument in Bearbeitung (wird beim nächsten Login wiederhergestellt)
+  entwuerfe: [], // Liste aller Entwürfe in Bearbeitung
   firmenDaten: {
     id: 1,
     firmenname: "Musterfirma GmbH",
@@ -1992,13 +1992,17 @@ function VaultProvider({ children }) {
   const [lastSaved, setLastSaved] = useState(null);
   
   // Cloud-Sync State
+  const HARDCODED_WORKER_URL = 'https://tight-wind-6426.michael-starkulla.workers.dev';
+  
   const [cloudConfig, setCloudConfig] = useState(() => {
     // Lade cloudConfig aus localStorage (nicht verschlüsselt, da nur Lizenzkey)
+    // Worker-URL ist fest eingebaut und wird immer überschrieben
     try {
       const saved = localStorage.getItem('vault_cloud_config');
-      return saved ? JSON.parse(saved) : { licenseKey: '', enabled: false, workerUrl: '' };
+      const parsed = saved ? JSON.parse(saved) : { licenseKey: '', enabled: false };
+      return { ...parsed, workerUrl: HARDCODED_WORKER_URL };
     } catch {
-      return { licenseKey: '', enabled: false, workerUrl: '' };
+      return { licenseKey: '', enabled: false, workerUrl: HARDCODED_WORKER_URL };
     }
   });
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle', 'uploading', 'success', 'error'
@@ -2391,7 +2395,26 @@ function VaultProvider({ children }) {
       return;
     }
     
-    if (!confirm('⚠️ Achtung!\n\nAlle lokalen Daten werden mit dem Cloud-Backup überschrieben.\n\nFortfahren?')) {
+    // Benutzer wählt Modus: Merge oder Überschreiben
+    const userChoice = prompt(
+      '☁️ Cloud-Backup laden\n\n' +
+      'Wählen Sie den Modus:\n\n' +
+      '1 = ZUSAMMENFÜHREN (empfohlen)\n' +
+      '    → Lokale Daten bleiben erhalten\n' +
+      '    → Neue Cloud-Daten werden hinzugefügt\n\n' +
+      '2 = VOLLSTÄNDIG ERSETZEN\n' +
+      '    → ALLE lokalen Daten werden gelöscht\n' +
+      '    → Nur Cloud-Daten bleiben\n\n' +
+      'Geben Sie 1 oder 2 ein:'
+    );
+    
+    if (!userChoice || (userChoice !== '1' && userChoice !== '2')) {
+      return;
+    }
+    
+    const useFullReplace = userChoice === '2';
+    
+    if (useFullReplace && !confirm('⚠️ WARNUNG!\n\nALLE lokalen Daten werden UNWIDERRUFLICH gelöscht!\n\nSind Sie absolut sicher?')) {
       return;
     }
     
@@ -2420,29 +2443,58 @@ function VaultProvider({ children }) {
 
       // 3. DIREKT entschlüsseln (Umgeht importFixedSizeBackup!)
       loading.updateMessage('🔓 Entschlüssele...');
-      let data = await workerDecrypt(encryptedBuffer, SecureVault.encryptionKey, true);
+      let cloudData = await workerDecrypt(encryptedBuffer, SecureVault.encryptionKey, true);
 
       // 4. Prüfen ob es vielleicht doch ein Export-Container ist (Wrapper entfernen)
-      if (data && data.f === 'fsb' && data.d) {
-        data = data.d;
+      if (cloudData && cloudData.f === 'fsb' && cloudData.d) {
+        cloudData = cloudData.d;
       }
 
       // 5. Inhalt prüfen
-      if (!data || (!data.kunden && !data.material)) {
+      if (!cloudData || (!cloudData.kunden && !cloudData.material)) {
         throw new Error('Entschlüsselte Daten sind leer oder ungültig');
       }
 
       // 6. State wiederherstellen
       loading.updateMessage('💾 Speichere...');
-      const newState = {
+      
+      let newState;
+      let resultMessage;
+      
+      if (useFullReplace) {
+        // MODUS 2: Vollständig ersetzen
+        newState = {
           ...DEFAULT_STATE,
-          kunden: data.kunden || [],
-          material: data.material || [],
-          rechnungen: data.rechnungen || [],
-          angebote: data.angebote || [],
-          firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(data.firmenDaten || {}) },
-          meta: { ...data.meta, restoredFrom: 'cloud-restore' }
-      };
+          kunden: cloudData.kunden || [],
+          material: cloudData.material || [],
+          rechnungen: cloudData.rechnungen || [],
+          angebote: cloudData.angebote || [],
+          entwuerfe: cloudData.entwuerfe || [],
+          firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(cloudData.firmenDaten || {}) },
+          meta: { ...cloudData.meta, restoredFrom: 'cloud-full-restore' }
+        };
+        resultMessage = '✅ Cloud-Backup vollständig wiederhergestellt!\n\nAlle lokalen Daten wurden ersetzt.';
+      } else {
+        // MODUS 1: Smart Merge
+        const { mergedData, stats } = mergeAllData(appState, cloudData);
+        
+        newState = {
+          ...DEFAULT_STATE,
+          kunden: mergedData.kunden,
+          material: mergedData.material,
+          rechnungen: mergedData.rechnungen,
+          angebote: mergedData.angebote,
+          entwuerfe: mergedData.entwuerfe,
+          firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(appState.firmenDaten || {}), ...(cloudData.firmenDaten || {}) },
+          meta: { 
+            ...appState.meta,
+            lastModified: new Date().toISOString(),
+            lastMerge: new Date().toISOString(),
+            mergeSource: 'cloud-manual-restore'
+          }
+        };
+        resultMessage = `✅ Cloud-Sync abgeschlossen!\n\n${stats.totalAdded} Einträge hinzugefügt\n${stats.totalUpdated} Einträge aktualisiert\n\nLokale Daten wurden beibehalten.`;
+      }
 
       updateState(newState);
       await forceSave();
@@ -2450,7 +2502,7 @@ function VaultProvider({ children }) {
       loading.close();
       setSyncStatus('success');
       setTimeout(() => setSyncStatus('idle'), 3000);
-      alert('✅ Cloud-Backup erfolgreich wiederhergestellt!');
+      alert(resultMessage);
 
     } catch (err) {
       loading.close();
@@ -2463,7 +2515,99 @@ function VaultProvider({ children }) {
          alert('Fehler: ' + err.message);
       }
     }
-  }, [cloudConfig, updateState, forceSave]);
+  }, [cloudConfig, appState, updateState, forceSave, mergeAllData]);
+  
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // SMART MERGE - Intelligentes Zusammenführen von Daten ohne Datenverlust
+  // ═══════════════════════════════════════════════════════════════════════════════
+  
+  /**
+   * Führt zwei Listen anhand ihrer ID zusammen
+   * - Elemente die nur lokal existieren → behalten
+   * - Elemente die nur in Cloud existieren → hinzufügen
+   * - Elemente die in beiden existieren → neueres behalten (lastModified)
+   * @returns {merged: Array, stats: {added: number, updated: number, unchanged: number}}
+   */
+  const mergeLists = useCallback((localList = [], cloudList = [], idField = 'id') => {
+    const localMap = new Map();
+    const stats = { added: 0, updated: 0, unchanged: 0 };
+    
+    // Alle lokalen Einträge in Map
+    localList.forEach(item => {
+      if (item && item[idField]) {
+        localMap.set(item[idField], item);
+      }
+    });
+    
+    // Cloud-Einträge durchgehen
+    cloudList.forEach(cloudItem => {
+      if (!cloudItem || !cloudItem[idField]) return;
+      
+      const localItem = localMap.get(cloudItem[idField]);
+      
+      if (!localItem) {
+        // Element existiert nur in Cloud → hinzufügen
+        localMap.set(cloudItem[idField], cloudItem);
+        stats.added++;
+      } else {
+        // Element existiert in beiden → vergleiche Zeitstempel
+        const cloudTime = cloudItem.lastModified || cloudItem.datum || 0;
+        const localTime = localItem.lastModified || localItem.datum || 0;
+        
+        const cloudDate = new Date(cloudTime).getTime() || 0;
+        const localDate = new Date(localTime).getTime() || 0;
+        
+        if (cloudDate > localDate) {
+          // Cloud ist neuer → übernehmen
+          localMap.set(cloudItem[idField], cloudItem);
+          stats.updated++;
+        } else {
+          stats.unchanged++;
+        }
+      }
+    });
+    
+    return {
+      merged: Array.from(localMap.values()),
+      stats
+    };
+  }, []);
+  
+  /**
+   * Führt alle Datenlisten zusammen und liefert Statistiken
+   */
+  const mergeAllData = useCallback((localData, cloudData) => {
+    const results = {
+      kunden: mergeLists(localData.kunden, cloudData.kunden, 'id'),
+      material: mergeLists(localData.material, cloudData.material, 'id'),
+      rechnungen: mergeLists(localData.rechnungen, cloudData.rechnungen, 'id'),
+      angebote: mergeLists(localData.angebote, cloudData.angebote, 'id'),
+      entwuerfe: mergeLists(localData.entwuerfe, cloudData.entwuerfe, 'entwurfId'),
+    };
+    
+    // Gesamtstatistik
+    const totalAdded = Object.values(results).reduce((sum, r) => sum + r.stats.added, 0);
+    const totalUpdated = Object.values(results).reduce((sum, r) => sum + r.stats.updated, 0);
+    
+    return {
+      mergedData: {
+        kunden: results.kunden.merged,
+        material: results.material.merged,
+        rechnungen: results.rechnungen.merged,
+        angebote: results.angebote.merged,
+        entwuerfe: results.entwuerfe.merged,
+      },
+      stats: {
+        kunden: results.kunden.stats,
+        material: results.material.stats,
+        rechnungen: results.rechnungen.stats,
+        angebote: results.angebote.stats,
+        entwuerfe: results.entwuerfe.stats,
+        totalAdded,
+        totalUpdated
+      }
+    };
+  }, [mergeLists]);
   
   // ═══════════════════════════════════════════════════════════════════════════════
   // CLOUD-UPDATE CHECK - Prüft beim Start ob neuere Daten in der Cloud sind
@@ -2524,29 +2668,18 @@ function VaultProvider({ children }) {
         return;
       }
       
-      // 5. Zeitstempel vergleichen
+      // 5. Zeitstempel für Anzeige holen
       const cloudModified = cloudData.meta?.lastModified ? new Date(cloudData.meta.lastModified) : null;
       const localModified = appState.meta?.lastModified ? new Date(appState.meta.lastModified) : null;
       
-      if (!cloudModified) {
-        console.log('☁️ Cloud-Daten haben keinen Zeitstempel');
-        return;
-      }
-      
-      // Nur wenn Cloud NEUER ist (mindestens 1 Sekunde Unterschied)
-      if (localModified && cloudModified <= localModified) {
-        console.log('☁️ Lokale Daten sind aktuell oder neuer');
-        return;
-      }
-      
       // 6. Benutzer fragen
-      const cloudDateStr = cloudModified.toLocaleString('de-DE', {
+      const cloudDateStr = cloudModified ? cloudModified.toLocaleString('de-DE', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
-      });
+      }) : 'unbekannt';
       
       const localDateStr = localModified ? localModified.toLocaleString('de-DE', {
         day: '2-digit',
@@ -2556,41 +2689,72 @@ function VaultProvider({ children }) {
         minute: '2-digit'
       }) : 'unbekannt';
       
-      const shouldRestore = confirm(
-        `☁️ Neueres Cloud-Backup gefunden!\n\n` +
-        `Cloud: ${cloudDateStr}\n` +
-        `Lokal: ${localDateStr}\n\n` +
-        `Möchten Sie das Cloud-Backup laden?\n` +
-        `(Lokale Änderungen werden überschrieben)`
-      );
+      // 7. SMART MERGE - Daten zusammenführen statt überschreiben
+      const { mergedData, stats } = mergeAllData(appState, cloudData);
       
-      if (!shouldRestore) {
-        console.log('☁️ Benutzer hat Cloud-Restore abgelehnt');
+      // Prüfen ob überhaupt etwas zu mergen ist
+      if (stats.totalAdded === 0 && stats.totalUpdated === 0) {
+        console.log('☁️ Keine neuen Daten in der Cloud');
         return;
       }
       
-      // 7. Cloud-Daten übernehmen
+      // Merge-Zusammenfassung erstellen
+      const summaryParts = [];
+      if (stats.kunden.added > 0) summaryParts.push(`${stats.kunden.added} neue Kunden`);
+      if (stats.kunden.updated > 0) summaryParts.push(`${stats.kunden.updated} aktualisierte Kunden`);
+      if (stats.material.added > 0) summaryParts.push(`${stats.material.added} neue Materialien`);
+      if (stats.material.updated > 0) summaryParts.push(`${stats.material.updated} aktualisierte Materialien`);
+      if (stats.rechnungen.added > 0) summaryParts.push(`${stats.rechnungen.added} neue Rechnungen`);
+      if (stats.rechnungen.updated > 0) summaryParts.push(`${stats.rechnungen.updated} aktualisierte Rechnungen`);
+      if (stats.angebote.added > 0) summaryParts.push(`${stats.angebote.added} neue Angebote`);
+      if (stats.angebote.updated > 0) summaryParts.push(`${stats.angebote.updated} aktualisierte Angebote`);
+      if (stats.entwuerfe.added > 0) summaryParts.push(`${stats.entwuerfe.added} neue Entwürfe`);
+      if (stats.entwuerfe.updated > 0) summaryParts.push(`${stats.entwuerfe.updated} aktualisierte Entwürfe`);
+      
+      const summaryText = summaryParts.join('\n• ');
+      
+      const shouldMerge = confirm(
+        `☁️ Cloud-Backup gefunden!\n\n` +
+        `Cloud: ${cloudDateStr}\n` +
+        `Lokal: ${localDateStr}\n\n` +
+        `Folgende Daten werden zusammengeführt:\n• ${summaryText}\n\n` +
+        `Möchten Sie die Daten zusammenführen?\n` +
+        `(Lokale Daten bleiben erhalten, neue werden hinzugefügt)`
+      );
+      
+      if (!shouldMerge) {
+        console.log('☁️ Benutzer hat Cloud-Merge abgelehnt');
+        return;
+      }
+      
+      // 7. Gemergte Daten übernehmen
       const newState = {
         ...DEFAULT_STATE,
-        kunden: cloudData.kunden || [],
-        material: cloudData.material || [],
-        rechnungen: cloudData.rechnungen || [],
-        angebote: cloudData.angebote || [],
-        firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(cloudData.firmenDaten || {}) },
-        meta: { ...cloudData.meta, restoredFrom: 'cloud-auto-check' }
+        kunden: mergedData.kunden,
+        material: mergedData.material,
+        rechnungen: mergedData.rechnungen,
+        angebote: mergedData.angebote,
+        entwuerfe: mergedData.entwuerfe,
+        firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(cloudData.firmenDaten || {}), ...(appState.firmenDaten || {}) },
+        meta: { 
+          ...appState.meta,
+          lastModified: new Date().toISOString(),
+          lastMerge: new Date().toISOString(),
+          mergeSource: 'cloud-auto-check'
+        }
       };
       
       updateState(newState);
       await forceSave();
       
-      console.log('☁️ Cloud-Daten erfolgreich geladen');
-      alert('✅ Cloud-Backup wurde geladen!');
+      console.log('☁️ Cloud-Daten erfolgreich gemerged:', stats);
+      alert(`✅ Cloud-Sync abgeschlossen!\n\n${stats.totalAdded} Einträge hinzugefügt\n${stats.totalUpdated} Einträge aktualisiert`);
       
     } catch (err) {
       // Silent fail - nur loggen, nicht den User stören
       console.error('☁️ Cloud-Check Fehler (silent):', err.message);
     }
-  }, [cloudConfig, appState.meta?.lastModified, updateState, forceSave]);
+  }, [cloudConfig, appState, updateState, forceSave, mergeAllData]);
   
   // Effect: Cloud-Check nach erfolgreichem Login
   useEffect(() => {
@@ -2868,23 +3032,45 @@ function MainApp() {
     rechnungshinweis: ""
   };
   
-  // Lade gespeicherten Entwurf oder leeres Dokument
+  // Generiere temporäre ID für Entwürfe (negativ, um von gespeicherten Dokumenten zu unterscheiden)
+  const generateEntwurfId = () => -Date.now();
+  
+  // Lade ersten Entwurf oder leeres Dokument
   const [aktivesDok, setAktivesDok] = useState(() => {
-    return appState.entwurf || leeresDokument;
+    const entwuerfe = appState.entwuerfe || [];
+    return entwuerfe.length > 0 ? entwuerfe[0] : { ...leeresDokument, entwurfId: generateEntwurfId() };
   });
   
   // Prüft ob das aktuelle Dokument ECHTE Änderungen hat (nicht nur auto-generierte Nummer)
   // Ein Entwurf gilt als "in Bearbeitung" wenn: Positionen, Kunde oder Betreff vorhanden
-  const hatUngespeichertenEntwurf = aktivesDok.positionen.length > 0 || 
-    aktivesDok.kunde.name.trim() !== '' ||
-    aktivesDok.betreff.trim() !== '';
+  const hatUngespeichertenEntwurf = React.useMemo(() => {
+    return (aktivesDok.positionen?.length > 0) || 
+      ((aktivesDok.kunde?.name || '').trim() !== '') ||
+      ((aktivesDok.betreff || '').trim() !== '');
+  }, [aktivesDok.positionen?.length, aktivesDok.kunde?.name, aktivesDok.betreff]);
   
-  // Speichere Entwurf automatisch bei Änderungen (mit Debounce)
+  // Speichere Entwurf automatisch bei Änderungen
   useEffect(() => {
-    if (hatUngespeichertenEntwurf) {
-      updateState(prev => ({ ...prev, entwurf: aktivesDok }));
+    // Nur speichern wenn: Hat Änderungen UND hat eine Entwurf-ID
+    if (hatUngespeichertenEntwurf && aktivesDok.entwurfId) {
+      console.log('📝 Entwurf wird gespeichert:', aktivesDok.kunde?.name, 'ID:', aktivesDok.entwurfId);
+      updateState(prev => {
+        const entwuerfe = prev.entwuerfe || [];
+        const existingIndex = entwuerfe.findIndex(e => e.entwurfId === aktivesDok.entwurfId);
+        
+        if (existingIndex >= 0) {
+          // Existierenden Entwurf aktualisieren
+          const neueEntwuerfe = [...entwuerfe];
+          neueEntwuerfe[existingIndex] = { ...aktivesDok };
+          return { ...prev, entwuerfe: neueEntwuerfe };
+        } else {
+          // Neuen Entwurf hinzufügen
+          console.log('📝 Neuer Entwurf hinzugefügt');
+          return { ...prev, entwuerfe: [...entwuerfe, { ...aktivesDok }] };
+        }
+      });
     }
-  }, [aktivesDok, hatUngespeichertenEntwurf]);
+  }, [aktivesDok, hatUngespeichertenEntwurf, updateState]);
   
   // Browser-Warnung NUR wenn Vault noch speichert (pending/saving)
   // Der Entwurf wird ja automatisch im Vault gespeichert, daher keine Warnung nötig
@@ -3050,7 +3236,7 @@ function MainApp() {
     const isEditingMuster = aktivesDok.muster && !forceMuster;
     
     // Prüfen ob das Dokument mit dieser ID noch existiert
-    const existiertInListe = aktivesDok.id !== null && rechnungen.some(d => d.id === aktivesDok.id);
+    const existiertInListe = aktivesDok.id !== null && aktivesDok.id > 0 && rechnungen.some(d => d.id === aktivesDok.id);
     
     let nr = aktivesDok.nummer.trim();
     
@@ -3062,10 +3248,13 @@ function MainApp() {
     }
     
     // Neue ID generieren wenn: Muster-Bearbeitung, keine ID vorhanden, oder ID existiert nicht mehr in Liste
-    const brauchNeueId = isEditingMuster || !aktivesDok.id || !existiertInListe;
+    const brauchNeueId = isEditingMuster || !aktivesDok.id || aktivesDok.id < 0 || !existiertInListe;
+    
+    // entwurfId entfernen für gespeichertes Dokument
+    const { entwurfId, ...dokOhneEntwurfId } = aktivesDok;
     
     const neu = {
-      ...aktivesDok,
+      ...dokOhneEntwurfId,
       id: brauchNeueId ? Date.now() : aktivesDok.id,
       nummer: nr,
       // Bei Muster-Bearbeitung: muster auf false setzen
@@ -3078,33 +3267,36 @@ function MainApp() {
       ? [...rechnungen, neu]  // Neues Dokument hinzufügen
       : rechnungen.map(d => d.id === aktivesDok.id ? neu : d);  // Existierendes aktualisieren
     
-    // Aktualisiere auch aktivesDok mit der neuen ID
+    // Aktualisiere auch aktivesDok mit der neuen ID (ohne entwurfId)
     setAktivesDok(neu);
     
     // Speichere Rechnungen und Angebote getrennt im Vault
     const rechnungenItems = allDocs.filter(d => d.typ !== "ANGEBOT");
     const angeboteItems = allDocs.filter(d => d.typ === "ANGEBOT");
     
-    updateState(prev => ({
-      ...prev,
-      rechnungen: rechnungenItems,
-      angebote: angeboteItems,
-      entwurf: null // Entwurf löschen nach erfolgreichem Speichern
-    }));
+    // Entwurf aus der Liste entfernen (falls vorhanden)
+    updateState(prev => {
+      const entwuerfe = (prev.entwuerfe || []).filter(e => e.entwurfId !== entwurfId);
+      return {
+        ...prev,
+        rechnungen: rechnungenItems,
+        angebote: angeboteItems,
+        entwuerfe: entwuerfe
+      };
+    });
     
     if (neu.muster) setMusterFilter(true);
     if (isEditingMuster) setMusterFilter(false); // Zeige normale Dokumente nach Muster-Konvertierung
     if (!silent) alert(`${neu.muster ? "Muster" : neu.typ} ${neu.nummer} gespeichert`);
   };
 
-  const loadDok = d => setAktivesDok(d);
+  const loadDok = d => {
+    // Wenn Dokument aus gespeicherter Liste geladen wird, entwurfId entfernen
+    const { entwurfId, ...dokOhneEntwurfId } = d;
+    setAktivesDok(dokOhneEntwurfId);
+  };
 
   const newDok = () => {
-    // Wenn aktueller Entwurf Daten hat, fragen ob verworfen werden soll
-    if (hatUngespeichertenEntwurf) {
-      if (!confirm('Aktuelles Dokument verwerfen? Änderungen gehen verloren.')) return;
-    }
-    
     // Generiere vorgeschlagene Nummer basierend auf Dokumenttyp
     const prefix = "RE";
     const existing = rechnungen
@@ -3118,6 +3310,7 @@ function MainApp() {
     
     const neuesDok = {
       id: null,
+      entwurfId: generateEntwurfId(), // Neue Entwurf-ID für automatisches Speichern
       typ: "RECHNUNG",
       nummer: suggestedNumber,
       datum: new Date().toLocaleDateString('de-DE'),
@@ -3129,12 +3322,17 @@ function MainApp() {
       arbeitsort: "",
       abschlagsrechnungBetrag: "0",
       rabatt: "0",
-      rabattBeschreibung: "Nachlass"
+      rabattBeschreibung: "Nachlass",
+      betreff: "",
+      freitext: "",
+      signaturKunde: false,
+      signaturAbsender: false,
+      signaturAbsenderData: "",
+      signaturAbsenderOrt: "",
+      signaturAbsenderDatum: "",
+      rechnungshinweis: ""
     };
     setAktivesDok(neuesDok);
-    
-    // Entwurf im Vault löschen
-    updateState(prev => ({ ...prev, entwurf: null }));
   };
 
   const copyAsMuster = d => {
@@ -3216,6 +3414,31 @@ function MainApp() {
     }
   };
 
+  // Hilfsfunktion: Prüft ob aktives Dokument ein gespeichertes ist (nicht Entwurf)
+  const istGespeichertesDokument = aktivesDok.id && aktivesDok.id > 0 && !aktivesDok.entwurfId;
+  
+  // Hilfsfunktion: Erstellt Kopie als neuen Entwurf
+  const erstelleKopieAlsEntwurf = () => {
+    const prefix = aktivesDok.typ === "ANGEBOT" ? "AN" : aktivesDok.typ === "ABSCHLAGSRECHNUNG" ? "AR" : aktivesDok.typ === "LEERES_DOKUMENT" ? "LD" : "RE";
+    const existing = rechnungen
+      .filter(d => d.typ === aktivesDok.typ && !d.muster)
+      .map(d => {
+        const match = d.nummer.match(new RegExp(`${prefix}-(\\d+)`));
+        return match ? parseInt(match[1], 10) : 0;
+      });
+    const nextNum = existing.length ? Math.max(...existing) + 1 : 1;
+    const suggestedNumber = `${prefix}-${nextNum.toString().padStart(4, '0')}`;
+    
+    return {
+      ...aktivesDok,
+      id: null,
+      entwurfId: generateEntwurfId(),
+      nummer: suggestedNumber,
+      datum: new Date().toLocaleDateString('de-DE'),
+      muster: false
+    };
+  };
+
   const waehleKunde = k => {
     const anrede = übersetzeAnrede(k.anrede);
     const prfx = anrede === "Herr" ? "Herrn " : anrede === "Frau" ? "Frau " : "";
@@ -3223,29 +3446,80 @@ function MainApp() {
     const isOrg = !!k.Organisation;
     const correctedName = korrigiereName(rawName, isOrg);
     
+    const neuerKunde = {
+      name: prfx + correctedName,
+      strasse: k.Strasse || k.strasse || "",
+      plz: k.PLZ || k.plz || "",
+      ort: k.Ort || k.ort || ""
+    };
+    
+    // Wenn gespeichertes Dokument: Warnung anzeigen
+    if (istGespeichertesDokument) {
+      const alterKunde = aktivesDok.kunde?.name || 'Unbekannt';
+      const choice = confirm(
+        `⚠️ Sie bearbeiten ein gespeichertes Dokument!\n\n` +
+        `${aktivesDok.typ} ${aktivesDok.nummer} (${alterKunde})\n\n` +
+        `Was möchten Sie tun?\n\n` +
+        `[OK] = Neues Dokument mit "${correctedName}" erstellen\n` +
+        `[Abbrechen] = Abbrechen (nichts ändern)`
+      );
+      
+      if (choice) {
+        // Neues Dokument als Kopie erstellen
+        const kopie = erstelleKopieAlsEntwurf();
+        setAktivesDok({
+          ...kopie,
+          kunde: neuerKunde
+        });
+      }
+      // Bei Abbrechen: Nichts tun
+      return;
+    }
+    
+    // Normaler Fall: Einfach Kunde setzen
     setAktivesDok({
       ...aktivesDok,
-      kunde: {
-        name: prfx + correctedName,
-        strasse: k.Strasse || k.strasse || "",
-        plz: k.PLZ || k.plz || "",
-        ort: k.Ort || k.ort || ""
-      }
+      kunde: neuerKunde
     });
   };
 
   const addPos = m => {
+    const neuePosition = {
+      id: Date.now(),
+      name: m.Name,
+      menge: "1",
+      einheit: m.Einheit,
+      preis: String(m.Verkaufspreis).replace('.', ','),
+      isUeberschrift: false,
+      isOptional: false
+    };
+    
+    // Wenn gespeichertes Dokument: Warnung anzeigen
+    if (istGespeichertesDokument) {
+      const choice = confirm(
+        `⚠️ Sie bearbeiten ein gespeichertes Dokument!\n\n` +
+        `${aktivesDok.typ} ${aktivesDok.nummer}\n\n` +
+        `Was möchten Sie tun?\n\n` +
+        `[OK] = Position zu neuem Dokument (Kopie) hinzufügen\n` +
+        `[Abbrechen] = Position zum Original hinzufügen (überschreibt!)`
+      );
+      
+      if (choice) {
+        // Neues Dokument als Kopie erstellen mit neuer Position
+        const kopie = erstelleKopieAlsEntwurf();
+        setAktivesDok({
+          ...kopie,
+          positionen: [...kopie.positionen, neuePosition]
+        });
+        return;
+      }
+      // Bei Abbrechen: Original wird bearbeitet (falls gewünscht)
+    }
+    
+    // Normaler Fall: Position hinzufügen
     setAktivesDok({
       ...aktivesDok,
-      positionen: [...aktivesDok.positionen, {
-        id: Date.now(),
-        name: m.Name,
-        menge: "1",
-        einheit: m.Einheit,
-        preis: String(m.Verkaufspreis).replace('.', ','),
-        isUeberschrift: false,
-        isOptional: false
-      }]
+      positionen: [...aktivesDok.positionen, neuePosition]
     });
   };
 
@@ -3931,36 +4205,102 @@ function MainApp() {
                 <button onClick={() => setDokTypFilter("leer")} className={`flex-1 px-3 py-1 rounded text-xs font-bold ${dokTypFilter === "leer" ? "bg-purple-600" : "bg-slate-700"}`}>
                   Leer
                 </button>
+                <button onClick={() => setDokTypFilter("entwuerfe")} className={`flex-1 px-3 py-1 rounded text-xs font-bold ${dokTypFilter === "entwuerfe" ? "bg-orange-600" : "bg-slate-700"}`}>
+                  Entwürfe {(appState.entwuerfe?.length || 0) > 0 && `(${appState.entwuerfe.length})`}
+                </button>
               </div>
-              {sortedRechnungen.length === 0 && <p className="text-slate-500 text-xs italic">Keine Belege gefunden.</p>}
-              {sortedRechnungen.map(d => (
-                <div key={d.id} className="p-3 bg-slate-800 rounded border border-slate-700 text-xs hover:bg-slate-700 flex flex-col gap-1">
-                  <div className="flex justify-between items-center">
-                    <div className="cursor-pointer flex-1" onClick={() => loadDok(d)}>
-                      <div className={`font-bold ${d.typ === "RECHNUNG" ? "text-green-400" : d.typ === "ANGEBOT" ? "text-blue-400" : d.typ === "ABSCHLAGSRECHNUNG" ? "text-orange-400" : d.typ === "LEERES_DOKUMENT" ? "text-purple-400" : "text-yellow-400"}`}>
-                        {d.typ === "LEERES_DOKUMENT" ? "LEERES DOK." : d.typ} {d.nummer} {d.muster ? "(Muster)" : ""}
+              
+              {/* Entwürfe-Ansicht */}
+              {dokTypFilter === "entwuerfe" ? (
+                <>
+                  {(appState.entwuerfe?.length || 0) > 0 ? (
+                    appState.entwuerfe.map(entwurf => (
+                      <div key={entwurf.entwurfId} className="p-3 bg-slate-800 rounded border-2 border-orange-500 text-xs mb-2">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-orange-400 font-bold text-sm">⚠️ ENTWURF</span>
+                          {entwurf.entwurfId === aktivesDok.entwurfId && (
+                            <span className="text-xs bg-green-600 px-2 py-0.5 rounded">AKTIV</span>
+                          )}
+                        </div>
+                        <div className="text-slate-300 mb-1">
+                          <span className="text-slate-500">Typ:</span> {entwurf.typ || 'Unbekannt'}
+                        </div>
+                        <div className="text-slate-300 mb-1">
+                          <span className="text-slate-500">Kunde:</span> {entwurf.kunde?.name || 'Kein Kunde'}
+                        </div>
+                        <div className="text-slate-300 mb-1">
+                          <span className="text-slate-500">Datum:</span> {entwurf.datum || 'Kein Datum'}
+                        </div>
+                        <div className="text-slate-300 mb-3">
+                          <span className="text-slate-500">Positionen:</span> {entwurf.positionen?.length || 0}
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setAktivesDok(entwurf)} 
+                            className="flex-1 bg-orange-600 hover:bg-orange-500 px-3 py-2 rounded font-bold uppercase text-xs"
+                            disabled={entwurf.entwurfId === aktivesDok.entwurfId}
+                          >
+                            📝 {entwurf.entwurfId === aktivesDok.entwurfId ? 'Wird bearbeitet' : 'Laden'}
+                          </button>
+                          <button 
+                            onClick={() => {
+                              if (confirm('Entwurf wirklich verwerfen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
+                                // Entwurf aus Liste entfernen
+                                updateState(prev => ({
+                                  ...prev,
+                                  entwuerfe: (prev.entwuerfe || []).filter(e => e.entwurfId !== entwurf.entwurfId)
+                                }));
+                                // Wenn der aktive Entwurf gelöscht wird, neues leeres Dokument erstellen
+                                if (entwurf.entwurfId === aktivesDok.entwurfId) {
+                                  newDok();
+                                }
+                              }
+                            }} 
+                            className="bg-red-600 hover:bg-red-500 px-3 py-2 rounded font-bold uppercase text-xs"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </div>
-                      <div className="text-slate-400 text-[11px]">
-                        {d.datum} – {d.kunde.name || "Kein Kunde"}
+                    ))
+                  ) : (
+                    <p className="text-slate-500 text-xs italic mt-2">Keine offenen Entwürfe vorhanden.</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Normale Dokumentenliste */}
+                  {sortedRechnungen.length === 0 && <p className="text-slate-500 text-xs italic">Keine Belege gefunden.</p>}
+                  {sortedRechnungen.map(d => (
+                    <div key={d.id} className="p-3 bg-slate-800 rounded border border-slate-700 text-xs hover:bg-slate-700 flex flex-col gap-1">
+                      <div className="flex justify-between items-center">
+                        <div className="cursor-pointer flex-1" onClick={() => loadDok(d)}>
+                          <div className={`font-bold ${d.typ === "RECHNUNG" ? "text-green-400" : d.typ === "ANGEBOT" ? "text-blue-400" : d.typ === "ABSCHLAGSRECHNUNG" ? "text-orange-400" : d.typ === "LEERES_DOKUMENT" ? "text-purple-400" : "text-yellow-400"}`}>
+                            {d.typ === "LEERES_DOKUMENT" ? "LEERES DOK." : d.typ} {d.nummer} {d.muster ? "(Muster)" : ""}
+                          </div>
+                          <div className="text-slate-400 text-[11px]">
+                            {d.datum} – {d.kunde.name || "Kein Kunde"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-1">
+                        {d.muster ? (
+                          <button onClick={e => { e.stopPropagation(); removeMuster(d); }} className="bg-orange-600 hover:bg-orange-500 px-2 py-1 rounded font-bold uppercase text-xs flex-1">
+                            Von Muster entfernen
+                          </button>
+                        ) : (
+                          <button onClick={e => { e.stopPropagation(); copyAsMuster(d); }} className="bg-purple-600 hover:bg-purple-500 px-2 py-1 rounded font-bold uppercase text-xs flex-1">
+                            Als Muster speichern
+                          </button>
+                        )}
+                        <button onClick={e => { e.stopPropagation(); deleteDok(d); }} className="bg-red-600 hover:bg-red-500 px-2 py-1 rounded font-bold uppercase text-xs">
+                          Löschen
+                        </button>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex gap-2 mt-1">
-                    {d.muster ? (
-                      <button onClick={e => { e.stopPropagation(); removeMuster(d); }} className="bg-orange-600 hover:bg-orange-500 px-2 py-1 rounded font-bold uppercase text-xs flex-1">
-                        Von Muster entfernen
-                      </button>
-                    ) : (
-                      <button onClick={e => { e.stopPropagation(); copyAsMuster(d); }} className="bg-purple-600 hover:bg-purple-500 px-2 py-1 rounded font-bold uppercase text-xs flex-1">
-                        Als Muster speichern
-                      </button>
-                    )}
-                    <button onClick={e => { e.stopPropagation(); deleteDok(d); }} className="bg-red-600 hover:bg-red-500 px-2 py-1 rounded font-bold uppercase text-xs">
-                      Löschen
-                    </button>
-                  </div>
-                </div>
-              ))}
+                  ))}
+                </>
+              )}
             </>
           )}
 
@@ -4293,16 +4633,6 @@ function MainApp() {
                     {cloudConfig.enabled ? 'Cloud-Sync aktiviert' : 'Cloud-Sync deaktiviert'}
                   </span>
                 </div>
-                
-                {/* Worker-URL */}
-                <p className="text-xs text-slate-400 mb-1">Worker-URL</p>
-                <input 
-                  type="url" 
-                  placeholder="https://dein-worker.workers.dev" 
-                  className="w-full p-2 text-black rounded text-xs mb-2" 
-                  value={cloudConfig.workerUrl || ''} 
-                  onChange={e => updateCloudConfig({ workerUrl: e.target.value })}
-                />
                 
                 {/* Lizenzschlüssel */}
                 <p className="text-xs text-slate-400 mb-1">Lizenzschlüssel</p>
