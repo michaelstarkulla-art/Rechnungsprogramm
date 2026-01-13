@@ -941,26 +941,41 @@ function getRandomNeutralFilename() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ZUGFeRD XML GENERATOR (EN 16931 BASIC Profil) - NUR IM RAM
+// ZUGFeRD XML GENERATOR (Optimiert für Abschlags- & Schlussrechnungen)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function generateZUGFeRDXML(dok, firmenDaten) {
   // ISO-Datum Format
   const now = new Date();
   const isoDate = now.toISOString().split('T')[0].replace(/-/g, '');
-  const isAngebot = dok.typ === 'ANGEBOT';
   
-  // Berechne Summen
+  // 1. Dokumenten-Typ bestimmen (Code 386 für Abschlagsrechnung!)
+  let typeCode = '380'; // Standard: Handelsrechnung
+  if (dok.typ === 'ANGEBOT') typeCode = '310';
+  else if (dok.typ === 'ABSCHLAGSRECHNUNG') typeCode = '386'; // Prepayment invoice
+  
+  // 2. Summen berechnen
   let nettoGesamt = 0;
   let mwstGesamt = 0;
   
   const positionen = (dok.positionen || []).map((pos, idx) => {
+    // Nur echte Positionen (keine Überschriften)
+    if (pos.isUeberschrift) return '';
+    
     const menge = parseFloat(String(pos.menge || 0).replace(',', '.')) || 0;
     const preis = parseFloat(String(pos.preis || 0).replace(',', '.')) || 0;
+    
+    // Bei Angeboten/optionalen Positionen nicht zur Summe zählen (XML Logik)
+    // Hier vereinfacht: Wir nehmen an, alles was auf der Rechnung steht, zählt.
+    if (pos.isOptional && dok.typ === 'ANGEBOT') return ''; // Optionale im XML weglassen oder speziell markieren (hier weglassen)
+
     const netto = menge * preis;
-    const mwst = netto * 0.19;
-    nettoGesamt += netto;
-    mwstGesamt += mwst;
+    const mwst = netto * 0.19; // 19% Hardcoded (könnte man konfigurierbar machen)
+    
+    if (!pos.isOptional) {
+      nettoGesamt += netto;
+      mwstGesamt += mwst;
+    }
     
     return `
       <ram:IncludedSupplyChainTradeLineItem>
@@ -976,7 +991,7 @@ function generateZUGFeRDXML(dok, firmenDaten) {
           </ram:NetPriceProductTradePrice>
         </ram:SpecifiedLineTradeAgreement>
         <ram:SpecifiedLineTradeDelivery>
-          <ram:BilledQuantity unitCode="${escapeXML(pos.einheit || 'C62')}">${menge.toFixed(2)}</ram:BilledQuantity>
+          <ram:BilledQuantity unitCode="${escapeXML(pos.einheit === 'Stk' ? 'H87' : 'C62')}">${menge.toFixed(2)}</ram:BilledQuantity>
         </ram:SpecifiedLineTradeDelivery>
         <ram:SpecifiedLineTradeSettlement>
           <ram:ApplicableTradeTax>
@@ -991,14 +1006,25 @@ function generateZUGFeRDXML(dok, firmenDaten) {
       </ram:IncludedSupplyChainTradeLineItem>`;
   }).join('');
   
-  const bruttoGesamt = nettoGesamt + mwstGesamt;
+  // Rabatte abziehen (falls globaler Rabatt existiert)
+  const rabattBetrag = parseFloat(String(dok.rabatt || 0).replace(',', '.')) || 0;
+  const nettoNachRabatt = nettoGesamt - rabattBetrag;
+  // MwSt neu berechnen auf Basis des rabattierten Nettos
+  const mwstNachRabatt = nettoNachRabatt * 0.19;
+  const bruttoGesamt = nettoNachRabatt + mwstNachRabatt;
   
+  // 3. Bereits gezahlte Beträge (Abschläge) für Schlussrechnung
+  // Wenn es eine normale RECHNUNG ist, aber Abschläge abgezogen werden
+  let prepaidAmount = 0;
+  if (dok.typ === 'RECHNUNG' && dok.abschlagsrechnungBetrag) {
+      prepaidAmount = parseFloat(String(dok.abschlagsrechnungBetrag).replace(',', '.')) || 0;
+  }
+  
+  // Der tatsächlich zu zahlende Restbetrag
+  const duePayableAmount = bruttoGesamt - prepaidAmount;
+
   // Kunde aufbereiten
   const kunde = dok.kunde || {};
-  const kundenName = kunde.name || 'Unbekannt';
-  const kundenStrasse = kunde.strasse || '';
-  const kundenPLZ = kunde.plz || '';
-  const kundenOrt = kunde.ort || '';
   
   // ZUGFeRD XML nach EN 16931 BASIC Profil
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -1013,12 +1039,12 @@ function generateZUGFeRDXML(dok, firmenDaten) {
   </rsm:ExchangedDocumentContext>
   <rsm:ExchangedDocument>
     <ram:ID>${escapeXML(dok.nummer || 'DRAFT')}</ram:ID>
-    <ram:TypeCode>${isAngebot ? '310' : '380'}</ram:TypeCode>
+    <ram:TypeCode>${typeCode}</ram:TypeCode>
     <ram:IssueDateTime>
       <udt:DateTimeString format="102">${isoDate}</udt:DateTimeString>
     </ram:IssueDateTime>
     <ram:IncludedNote>
-      <ram:Content>${escapeXML(dok.betreff || '')}</ram:Content>
+      <ram:Content>${escapeXML(dok.betreff || 'Rechnung')}</ram:Content>
     </ram:IncludedNote>
   </rsm:ExchangedDocument>
   <rsm:SupplyChainTradeTransaction>
@@ -1029,18 +1055,18 @@ function generateZUGFeRDXML(dok, firmenDaten) {
           <ram:LineOne>${escapeXML(firmenDaten.strasse || '')}</ram:LineOne>
           <ram:PostcodeCode>${escapeXML(firmenDaten.plz || '')}</ram:PostcodeCode>
           <ram:CityName>${escapeXML(firmenDaten.ort || '')}</ram:CityName>
-          <ram:CountryID>${escapeXML(firmenDaten.land || 'DE')}</ram:CountryID>
+          <ram:CountryID>${escapeXML(firmenDaten.land === 'Deutschland' ? 'DE' : 'DE')}</ram:CountryID>
         </ram:PostalTradeAddress>
         <ram:SpecifiedTaxRegistration>
           <ram:ID schemeID="VA">${escapeXML(firmenDaten.ustid || '')}</ram:ID>
         </ram:SpecifiedTaxRegistration>
       </ram:SellerTradeParty>
       <ram:BuyerTradeParty>
-        <ram:Name>${escapeXML(kundenName)}</ram:Name>
+        <ram:Name>${escapeXML(kunde.name || 'Kunde')}</ram:Name>
         <ram:PostalTradeAddress>
-          <ram:LineOne>${escapeXML(kundenStrasse)}</ram:LineOne>
-          <ram:PostcodeCode>${escapeXML(kundenPLZ)}</ram:PostcodeCode>
-          <ram:CityName>${escapeXML(kundenOrt)}</ram:CityName>
+          <ram:LineOne>${escapeXML(kunde.strasse || '')}</ram:LineOne>
+          <ram:PostcodeCode>${escapeXML(kunde.plz || '')}</ram:PostcodeCode>
+          <ram:CityName>${escapeXML(kunde.ort || '')}</ram:CityName>
           <ram:CountryID>DE</ram:CountryID>
         </ram:PostalTradeAddress>
       </ram:BuyerTradeParty>
@@ -1058,18 +1084,19 @@ function generateZUGFeRDXML(dok, firmenDaten) {
         <ram:Description>Zahlbar innerhalb von ${firmenDaten.zahlungsziel || 14} Tagen</ram:Description>
       </ram:SpecifiedTradePaymentTerms>
       <ram:ApplicableTradeTax>
-        <ram:CalculatedAmount>${mwstGesamt.toFixed(2)}</ram:CalculatedAmount>
+        <ram:CalculatedAmount>${mwstNachRabatt.toFixed(2)}</ram:CalculatedAmount>
         <ram:TypeCode>VAT</ram:TypeCode>
-        <ram:BasisAmount>${nettoGesamt.toFixed(2)}</ram:BasisAmount>
+        <ram:BasisAmount>${nettoNachRabatt.toFixed(2)}</ram:BasisAmount>
         <ram:CategoryCode>S</ram:CategoryCode>
         <ram:RateApplicablePercent>19.00</ram:RateApplicablePercent>
       </ram:ApplicableTradeTax>
       <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
-        <ram:LineTotalAmount>${nettoGesamt.toFixed(2)}</ram:LineTotalAmount>
-        <ram:TaxBasisTotalAmount>${nettoGesamt.toFixed(2)}</ram:TaxBasisTotalAmount>
-        <ram:TaxTotalAmount currencyID="EUR">${mwstGesamt.toFixed(2)}</ram:TaxTotalAmount>
+        <ram:LineTotalAmount>${nettoNachRabatt.toFixed(2)}</ram:LineTotalAmount>
+        <ram:TaxBasisTotalAmount>${nettoNachRabatt.toFixed(2)}</ram:TaxBasisTotalAmount>
+        <ram:TaxTotalAmount currencyID="EUR">${mwstNachRabatt.toFixed(2)}</ram:TaxTotalAmount>
         <ram:GrandTotalAmount>${bruttoGesamt.toFixed(2)}</ram:GrandTotalAmount>
-        <ram:DuePayableAmount>${bruttoGesamt.toFixed(2)}</ram:DuePayableAmount>
+        ${prepaidAmount > 0 ? `<ram:TotalPrepaidAmount>${prepaidAmount.toFixed(2)}</ram:TotalPrepaidAmount>` : ''}
+        <ram:DuePayableAmount>${duePayableAmount.toFixed(2)}</ram:DuePayableAmount>
       </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
     </ram:ApplicableHeaderTradeSettlement>
     ${positionen}
@@ -3238,17 +3265,46 @@ function MainApp() {
     // Prüfen ob das Dokument mit dieser ID noch existiert
     const existiertInListe = aktivesDok.id !== null && aktivesDok.id > 0 && rechnungen.some(d => d.id === aktivesDok.id);
     
+    // NEU: Prüfen ob der Dokumenttyp gewechselt wurde (z.B. Angebot → Rechnung)
+    const originalDok = existiertInListe ? rechnungen.find(d => d.id === aktivesDok.id) : null;
+    const typWurdeGewechselt = originalDok && originalDok.typ !== aktivesDok.typ;
+    
+    // Bei Typ-Wechsel: User fragen ob neues Dokument erstellt werden soll
+    if (typWurdeGewechselt && !forceMuster) {
+      const originalTypText = originalDok.typ === 'ANGEBOT' ? 'Angebot' : 
+                              originalDok.typ === 'ABSCHLAGSRECHNUNG' ? 'Abschlagsrechnung' : 
+                              originalDok.typ === 'RECHNUNG' ? 'Rechnung' : originalDok.typ;
+      const neuerTypText = aktivesDok.typ === 'ANGEBOT' ? 'Angebot' : 
+                           aktivesDok.typ === 'ABSCHLAGSRECHNUNG' ? 'Abschlagsrechnung' : 
+                           aktivesDok.typ === 'RECHNUNG' ? 'Rechnung' : aktivesDok.typ;
+      
+      const shouldCreateNew = confirm(
+        `📋 Dokumenttyp wurde geändert!\n\n` +
+        `Original: ${originalTypText} ${originalDok.nummer}\n` +
+        `Neu: ${neuerTypText}\n\n` +
+        `Möchten Sie eine NEUE ${neuerTypText} erstellen?\n` +
+        `(Das ursprüngliche ${originalTypText} bleibt erhalten)\n\n` +
+        `OK = Neue ${neuerTypText} erstellen\n` +
+        `Abbrechen = Nicht speichern`
+      );
+      
+      if (!shouldCreateNew) {
+        return; // Abbrechen - nichts speichern
+      }
+      // Weiter mit Erstellung eines neuen Dokuments (typWurdeGewechselt = true bewirkt neue ID)
+    }
+    
     let nr = aktivesDok.nummer.trim();
     
-    if (isEditingMuster) {
-      // Muster wird als neues normales Dokument gespeichert
+    if (isEditingMuster || typWurdeGewechselt) {
+      // Muster wird als neues normales Dokument gespeichert ODER Typ wurde gewechselt
       nr = generateNextNumber(); // Neue Nummer generieren
     } else if (!nr) {
       nr = forceMuster ? generateMusterNumber() : generateNextNumber();
     }
     
-    // Neue ID generieren wenn: Muster-Bearbeitung, keine ID vorhanden, oder ID existiert nicht mehr in Liste
-    const brauchNeueId = isEditingMuster || !aktivesDok.id || aktivesDok.id < 0 || !existiertInListe;
+    // Neue ID generieren wenn: Muster-Bearbeitung, Typ-Wechsel, keine ID vorhanden, oder ID existiert nicht mehr in Liste
+    const brauchNeueId = isEditingMuster || typWurdeGewechselt || !aktivesDok.id || aktivesDok.id < 0 || !existiertInListe;
     
     // entwurfId entfernen für gespeichertes Dokument
     const { entwurfId, ...dokOhneEntwurfId } = aktivesDok;
@@ -3261,7 +3317,7 @@ function MainApp() {
       muster: isEditingMuster ? false : (forceMuster || aktivesDok.muster)
     };
     
-    // Bei Muster-Bearbeitung oder neuem Dokument: hinzufügen
+    // Bei Muster-Bearbeitung, Typ-Wechsel oder neuem Dokument: hinzufügen
     // Bei existierendem Dokument: aktualisieren
     const allDocs = brauchNeueId
       ? [...rechnungen, neu]  // Neues Dokument hinzufügen
@@ -3287,7 +3343,15 @@ function MainApp() {
     
     if (neu.muster) setMusterFilter(true);
     if (isEditingMuster) setMusterFilter(false); // Zeige normale Dokumente nach Muster-Konvertierung
-    if (!silent) alert(`${neu.muster ? "Muster" : neu.typ} ${neu.nummer} gespeichert`);
+    
+    // Bessere Bestätigungsmeldung
+    if (!silent) {
+      if (typWurdeGewechselt) {
+        alert(`✅ Neue ${neu.typ === 'ANGEBOT' ? 'Angebot' : neu.typ} ${neu.nummer} erstellt!\n\nDas ursprüngliche ${originalDok.typ === 'ANGEBOT' ? 'Angebot' : originalDok.typ} ${originalDok.nummer} wurde beibehalten.`);
+      } else {
+        alert(`${neu.muster ? "Muster" : neu.typ} ${neu.nummer} gespeichert`);
+      }
+    }
   };
 
   const loadDok = d => {
