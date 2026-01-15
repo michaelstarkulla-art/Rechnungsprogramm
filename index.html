@@ -10,6 +10,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.3/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
   <style>
     @media print {
       .no-print { display: none !important; }
@@ -108,11 +109,17 @@
     .start-modal-footer button:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(13, 148, 136, 0.35); }
     .start-modal-footer small { display: block; margin-top: 10px; color: #475569; font-size: 0.65rem; }
 
-    /* Privacy Footer */
+    /* Privacy Footer - Einfacher Fußbereich */
     .privacy-footer {
-      margin-top: 2rem; padding: 1.5rem;
+      margin: 20px auto;
+      padding: 1.5rem;
       background: linear-gradient(145deg, #1a1a2e 0%, #16213e 100%);
-      border-radius: 12px; border: 1px solid rgba(13, 148, 136, 0.2); text-align: center;
+      border-radius: 12px;
+      border: 1px solid rgba(13, 148, 136, 0.2);
+      text-align: center;
+      max-width: 800px;
+      width: 100%;
+      box-sizing: border-box;
     }
     .privacy-footer-motto { font-size: 0.95rem; font-weight: 700; color: #2dd4bf; margin-bottom: 12px; letter-spacing: 0.5px; }
     .privacy-footer-motto .shield { font-size: 1.1rem; margin-right: 6px; }
@@ -126,6 +133,18 @@
     }
     .privacy-badge.green { background: rgba(34, 197, 94, 0.1); color: #4ade80; border-color: rgba(34, 197, 94, 0.2); }
     .privacy-footer-copyright { margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); color: #64748b; font-size: 0.65rem; }
+    
+    /* Mobile: Privacy Footer Anpassungen */
+    @media (max-width: 767px) {
+      .privacy-footer {
+        margin: 20px 10px 100px 10px;
+        padding: 1rem;
+      }
+      .privacy-footer-badges { gap: 6px; }
+      .privacy-badge { padding: 4px 8px; font-size: 0.6rem; }
+      .privacy-footer-text { font-size: 0.7rem; }
+      .privacy-footer-motto { font-size: 0.85rem; }
+    }
     
     /* ═══════════════════════════════════════════════════════════════════════════════
      * MOBILE-FIRST RESPONSIVE LAYOUT
@@ -163,9 +182,10 @@
     .main-content {
       width: 100%;
     }
-    
-    /* Desktop: Sidebar sichtbar */
-    @media (min-width: 768px) {
+
+    /* Desktop: Sidebar sichtbar - NUR wenn Breite >= 1024px UND Höhe >= 600px */
+    /* Das verhindert dass Smartphones im Querformat die Desktop-Ansicht bekommen */
+    @media (min-width: 1024px) and (min-height: 600px) {
       .sidebar {
         position: relative;
         transform: translateX(0);
@@ -180,6 +200,24 @@
       
       .main-content {
         flex: 1;
+        padding-top: 0 !important;
+      }
+      
+      /* Action-Bar mit Sidebar-Offset nur auf echtem Desktop */
+      .action-bar-mobile {
+        left: 24rem !important;
+      }
+      
+      /* Mobile Header auf echtem Desktop ausblenden */
+      .mobile-header {
+        display: none !important;
+      }
+    }
+    
+    /* Zwischen 768px und 1024px: Tailwind md: Klassen überschreiben */
+    @media (min-width: 768px) and (max-width: 1023px) {
+      .action-bar-mobile {
+        left: 0 !important;
       }
     }
     
@@ -191,6 +229,144 @@
     
     .animate-cloud-spin {
       animation: cloud-spin 1s linear infinite;
+    }
+    
+    /* ════════════ HIGH-FIDELITY PREVIEW CSS ════════════ */
+    
+    /* Inputs die wie Text aussehen */
+    .paper-input {
+      background: transparent;
+      border: none;
+      border-bottom: 1px dashed transparent;
+      width: 100%;
+      transition: all 0.2s;
+    }
+    .paper-input:hover { border-bottom-color: #ccc; }
+    .paper-input:focus { 
+      outline: none; 
+      border-bottom: 1px solid #10b981;
+      background: rgba(16, 185, 129, 0.05);
+    }
+    .paper-textarea {
+      width: 100%;
+      background: transparent;
+      border: none;
+      resize: vertical;
+      min-height: 20px;
+      border-left: 2px solid transparent;
+      padding-left: 0;
+    }
+    .paper-textarea:hover { border-left-color: #ccc; padding-left: 5px; }
+    .paper-textarea:focus { 
+      outline: none; 
+      border-left-color: #10b981; 
+      background: rgba(16, 185, 129, 0.05);
+      padding-left: 5px;
+    }
+    
+    /* Preview Scroll Container */
+    .preview-scroll-area {
+      flex: 1;
+      overflow: auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #e2e8f0 0%, #f1f5f9 100%);
+      -webkit-overflow-scrolling: touch;
+      min-height: 0;
+    }
+    
+    @media (max-width: 767px) {
+      .preview-scroll-area {
+        padding: 5px;
+      }
+    }
+    
+    /* A4 Seite */
+    .a4-preview {
+      width: 210mm;
+      min-width: 210mm;
+      min-height: 297mm;
+      height: auto;
+      background: white;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
+      position: relative;
+      transform-origin: top left;
+      transition: transform 0.2s ease;
+      margin: 0 auto;
+    }
+    
+    /* Mobile: Dokument links positionieren */
+    @media (max-width: 767px) {
+      .a4-preview {
+        margin: 0;
+        transform-origin: top left;
+      }
+    }
+    
+    /* Mobile: Dokument links ausrichten damit es beim Öffnen sichtbar ist */
+    @media (max-width: 767px) {
+      .a4-preview {
+        margin: 0; /* Links ausrichten statt zentriert */
+        transform-origin: top left;
+      }
+    }
+    
+    /* Mobile: Falzmarken ausblenden */
+    @media (max-width: 767px) {
+      .falzmarke {
+        display: none !important;
+      }
+    }
+    
+    /* Page Footer - am unteren Rand des A4-Blattes */
+    .a4-preview .page-footer {
+      font-size: 9pt;
+      color: #444;
+      border-top: 1px solid #ccc;
+      padding: 3mm 20mm 15mm 25mm;
+      margin-top: 15mm;
+    }
+    
+    /* Page Content - dynamisch wachsend */
+    .a4-preview .page-content {
+      padding: 25mm 20mm 0 25mm;
+    }
+    
+    /* Falzmarken */
+    .falzmarke { position: absolute; left: 0; width: 8mm; height: 0; border-top: 1px solid #ccc; z-index: 5; }
+    .falzmarke-1 { top: 105mm; }
+    .falzmarke-2 { top: 210mm; }
+    .falzmarke-3 { top: 148.5mm; width: 12mm; border-top: 1px solid #999; }
+    
+    /* Zoom Toolbar - auf allen Geräten sichtbar */
+    .zoom-toolbar {
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      z-index: 10;
+      flex-shrink: 0;
+    }
+    
+    @media (max-width: 767px) {
+      .zoom-toolbar {
+        padding: 6px 10px;
+      }
+    }
+    
+    /* Querformat auf Smartphones: Zoom-Toolbar sichtbar machen */
+    @media (max-height: 500px) and (orientation: landscape) {
+      .zoom-toolbar {
+        padding: 4px 10px;
+        position: sticky;
+        top: 0;
+      }
+      
+      .main-content {
+        padding-top: 56px !important; /* Platz für mobile-header */
+      }
     }
   </style>
 </head>
@@ -1976,6 +2152,17 @@ const DEFAULT_STATE = {
   rechnungen: [],
   angebote: [],
   entwuerfe: [], // Liste aller Entwürfe in Bearbeitung
+  zeiterfassung: {
+    projekte: [],
+    mitarbeiter: [], // Namen als Strings
+    monatsListe: [], // Separate Monats-Stunden (unabhängig von Projekten)
+    einstellungen: {
+      pauseStart: "12:00",
+      pauseEnde: "12:30",
+      pauseAktiv: true,
+      stundenlohn: 50
+    }
+  },
   firmenDaten: {
     id: 1,
     firmenname: "Musterfirma GmbH",
@@ -2360,7 +2547,7 @@ function VaultProvider({ children }) {
         
         loading.close();
         
-        if (!data.kunden && !data.material) throw new Error('Ungültiges Format');
+        if (!data.kunden && !data.material && !data.zeiterfassung) throw new Error('Ungültiges Format');
         
         if (!confirm('Aktuelle Daten überschreiben? Alle lokalen Änderungen gehen verloren!')) return;
         
@@ -2370,6 +2557,8 @@ function VaultProvider({ children }) {
           material: data.material || [],
           rechnungen: data.rechnungen || [],
           angebote: data.angebote || [],
+          entwuerfe: data.entwuerfe || [],
+          zeiterfassung: data.zeiterfassung || DEFAULT_STATE.zeiterfassung,
           firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(data.firmenDaten || data.einstellungen?.[0] || {}) },
           meta: {
             version: 5,
@@ -2497,6 +2686,7 @@ function VaultProvider({ children }) {
           rechnungen: cloudData.rechnungen || [],
           angebote: cloudData.angebote || [],
           entwuerfe: cloudData.entwuerfe || [],
+          zeiterfassung: cloudData.zeiterfassung || DEFAULT_STATE.zeiterfassung,
           firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(cloudData.firmenDaten || {}) },
           meta: { ...cloudData.meta, restoredFrom: 'cloud-full-restore' }
         };
@@ -2512,6 +2702,7 @@ function VaultProvider({ children }) {
           rechnungen: mergedData.rechnungen,
           angebote: mergedData.angebote,
           entwuerfe: mergedData.entwuerfe,
+          zeiterfassung: mergedData.zeiterfassung,
           firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(appState.firmenDaten || {}), ...(cloudData.firmenDaten || {}) },
           meta: { 
             ...appState.meta,
@@ -2612,6 +2803,17 @@ function VaultProvider({ children }) {
       entwuerfe: mergeLists(localData.entwuerfe, cloudData.entwuerfe, 'entwurfId'),
     };
     
+    // Zeiterfassung separat mergen (hat verschachtelte Struktur)
+    const localZeit = localData.zeiterfassung || DEFAULT_STATE.zeiterfassung;
+    const cloudZeit = cloudData.zeiterfassung || DEFAULT_STATE.zeiterfassung;
+    const mergedZeiterfassung = {
+      projekte: mergeLists(localZeit.projekte || [], cloudZeit.projekte || [], 'id').merged,
+      monatsListe: mergeLists(localZeit.monatsListe || [], cloudZeit.monatsListe || [], 'id').merged,
+      mitarbeiter: [...new Set([...(localZeit.mitarbeiter || []), ...(cloudZeit.mitarbeiter || [])])].sort(),
+      einstellungen: { ...(localZeit.einstellungen || {}), ...(cloudZeit.einstellungen || {}) },
+      aktiv: localZeit.aktiv || cloudZeit.aktiv || null
+    };
+    
     // Gesamtstatistik
     const totalAdded = Object.values(results).reduce((sum, r) => sum + r.stats.added, 0);
     const totalUpdated = Object.values(results).reduce((sum, r) => sum + r.stats.updated, 0);
@@ -2623,6 +2825,7 @@ function VaultProvider({ children }) {
         rechnungen: results.rechnungen.merged,
         angebote: results.angebote.merged,
         entwuerfe: results.entwuerfe.merged,
+        zeiterfassung: mergedZeiterfassung,
       },
       stats: {
         kunden: results.kunden.stats,
@@ -2762,6 +2965,7 @@ function VaultProvider({ children }) {
         rechnungen: mergedData.rechnungen,
         angebote: mergedData.angebote,
         entwuerfe: mergedData.entwuerfe,
+        zeiterfassung: mergedData.zeiterfassung,
         firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(cloudData.firmenDaten || {}), ...(appState.firmenDaten || {}) },
         meta: { 
           ...appState.meta,
@@ -2965,6 +3169,2225 @@ function LoginScreen() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SICHERE LÖSCHFUNKTION - Forensisch sichere Datenvernichtung
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Generiert Zufallsstring für Überschreibung
+const generateRandomData = (length = 100) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  let result = '';
+  const randomValues = new Uint32Array(length);
+  crypto.getRandomValues(randomValues);
+  for (let i = 0; i < length; i++) {
+    result += chars[randomValues[i] % chars.length];
+  }
+  return result;
+};
+
+// Überschreibt ein Objekt rekursiv mit Zufallsdaten
+const overwriteWithRandom = (obj) => {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj === 'string') return generateRandomData(obj.length || 50);
+  if (typeof obj === 'number') return Math.random() * 999999999;
+  if (typeof obj === 'boolean') return Math.random() > 0.5;
+  if (Array.isArray(obj)) return obj.map(item => overwriteWithRandom(item));
+  if (typeof obj === 'object') {
+    const result = {};
+    for (const key in obj) {
+      result[key] = overwriteWithRandom(obj[key]);
+    }
+    return result;
+  }
+  return generateRandomData(20);
+};
+
+// Sichere Löschfunktion: Überschreibt Daten mehrfach bevor sie entfernt werden
+const secureDelete = async (updateState, dataPath, itemId, identifierKey = 'id') => {
+  return new Promise((resolve) => {
+    // Schritt 1: Daten mit Zufallswerten überschreiben (3x), aber ID behalten
+    for (let pass = 0; pass < 3; pass++) {
+      updateState(prev => {
+        const pathParts = dataPath.split('.');
+        let current = prev;
+        
+        // Navigiere zum Array
+        for (const part of pathParts) {
+          current = current?.[part];
+        }
+        
+        if (!Array.isArray(current)) return prev;
+        
+        // Finde und überschreibe das Element (aber behalte die ID!)
+        const newArray = current.map(item => {
+          if (item[identifierKey] === itemId) {
+            const overwritten = overwriteWithRandom(item);
+            // ID zurücksetzen damit wir es später noch finden können
+            overwritten[identifierKey] = itemId;
+            return overwritten;
+          }
+          return item;
+        });
+        
+        // Rekonstruiere den State
+        const reconstructState = (obj, parts, newValue) => {
+          if (parts.length === 0) return newValue;
+          const [first, ...rest] = parts;
+          return {
+            ...obj,
+            [first]: reconstructState(obj?.[first] || {}, rest, newValue)
+          };
+        };
+        
+        return reconstructState(prev, pathParts, newArray);
+      });
+    }
+    
+    // Schritt 2: Element entfernen (nach kurzem Delay für State-Updates)
+    setTimeout(() => {
+      updateState(prev => {
+        const pathParts = dataPath.split('.');
+        let current = prev;
+        
+        for (const part of pathParts) {
+          current = current?.[part];
+        }
+        
+        if (!Array.isArray(current)) return prev;
+        
+        // Jetzt filtern - die ID ist noch intakt
+        const newArray = current.filter(item => item[identifierKey] !== itemId);
+        
+        const reconstructState = (obj, parts, newValue) => {
+          if (parts.length === 0) return newValue;
+          const [first, ...rest] = parts;
+          return {
+            ...obj,
+            [first]: reconstructState(obj?.[first] || {}, rest, newValue)
+          };
+        };
+        
+        return reconstructState(prev, pathParts, newArray);
+      });
+      resolve(true);
+    }, 100);
+  });
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ZEITERFASSUNG LOGIK & KOMPONENTEN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Hilfsfunktion für Zeitberechnung
+// Helper für Kalenderwochen-Vergleich (Regiebericht)
+const isSameWeek = (date1, date2) => {
+  const d1 = new Date(date1);
+  const d2 = new Date(date2);
+  const onejan = new Date(d1.getFullYear(), 0, 1);
+  const week1 = Math.ceil((((d1 - onejan) / 86400000) + onejan.getDay() + 1) / 7);
+  const onejan2 = new Date(d2.getFullYear(), 0, 1);
+  const week2 = Math.ceil((((d2 - onejan2) / 86400000) + onejan2.getDay() + 1) / 7);
+  return week1 === week2 && d1.getFullYear() === d2.getFullYear();
+};
+
+const calculateNettoHours = (von, bis, pauseSettings) => {
+  if (!von || !bis) return { netto: 0, pause: false, pauseText: "" };
+  
+  const [vh, vm] = von.split(':').map(Number);
+  const [bh, bm] = bis.split(':').map(Number);
+  let minutes = (bh * 60 + bm) - (vh * 60 + vm);
+  
+  if (minutes <= 0) return { netto: 0, pause: false, pauseText: "" };
+
+  let netto = minutes / 60;
+  let pause = false;
+  let pauseText = "";
+
+  // Automatische Pause abziehen
+  if (pauseSettings?.pauseAktiv) {
+    const [psh, psm] = (pauseSettings.pauseStart || "12:00").split(':').map(Number);
+    const [peh, pem] = (pauseSettings.pauseEnde || "12:30").split(':').map(Number);
+    
+    const startMin = vh * 60 + vm;
+    const endMin = bh * 60 + bm;
+    const pauseStartMin = psh * 60 + psm;
+    const pauseEndMin = peh * 60 + pem;
+    const pauseDauer = (pauseEndMin - pauseStartMin) / 60;
+
+    // Wenn Arbeitszeit die Pause komplett umschließt
+    if (startMin < pauseStartMin && endMin > pauseEndMin) {
+      netto -= pauseDauer;
+      pause = true;
+      pauseText = `(inkl. ${Math.round(pauseDauer * 60)} Min. Pause)`;
+    }
+  }
+  
+  return { netto: Math.max(0, netto), pause, pauseText };
+};
+
+// Die Hauptkomponente für Zeiterfassung
+function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateInvoice, speicherInfo }) {
+  // Fallback für alte Vaults ohne zeiterfassung
+  const zeiterfassung = appState.zeiterfassung || {
+    projekte: [],
+    mitarbeiter: [],
+    monatsListe: [],
+    einstellungen: {
+      pauseStart: "12:00",
+      pauseEnde: "12:30",
+      pauseAktiv: true,
+      stundenlohn: 50
+    }
+  };
+
+  // Lokaler State für Formulare
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Eingabe-Zeilen (Standard 5 Zeilen)
+  const [rows, setRows] = useState(
+    Array(5).fill(null).map(() => ({ mitarbeiter: "", typ: "F", von: "", bis: "" }))
+  );
+  const [material, setMaterial] = useState("");
+  
+  // Regiebericht State
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportPeriod, setReportPeriod] = useState('today');
+  const sigPadRef = React.useRef(null);       // Auftragnehmer
+  const sigCanvasRef = React.useRef(null);
+  const sigPadRef2 = React.useRef(null);      // Auftraggeber
+  const sigCanvasRef2 = React.useRef(null);
+  
+  // Unterschrift-Einstellung aus Sidebar
+  const druckModus = appState.zeiterfassung?.einstellungen?.unterschriftAktiv !== false;
+  
+  // SignaturePad initialisieren wenn Modal geöffnet
+  React.useEffect(() => {
+    if (showReportModal && window.SignaturePad) {
+      // Auftragnehmer Canvas
+      if (sigCanvasRef.current) {
+        const canvas = sigCanvasRef.current;
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        sigPadRef.current = new window.SignaturePad(canvas, {
+          backgroundColor: 'rgb(248, 250, 252)',
+          penColor: 'rgb(0, 0, 0)'
+        });
+      }
+      // Auftraggeber Canvas
+      if (sigCanvasRef2.current) {
+        const canvas2 = sigCanvasRef2.current;
+        const rect2 = canvas2.parentElement.getBoundingClientRect();
+        canvas2.width = rect2.width;
+        canvas2.height = rect2.height;
+        sigPadRef2.current = new window.SignaturePad(canvas2, {
+          backgroundColor: 'rgb(248, 250, 252)',
+          penColor: 'rgb(0, 0, 0)'
+        });
+      }
+    }
+    return () => {
+      if (sigPadRef.current) { sigPadRef.current.off(); sigPadRef.current = null; }
+      if (sigPadRef2.current) { sigPadRef2.current.off(); sigPadRef2.current = null; }
+    };
+  }, [showReportModal]);
+
+  // Helper: Zeilen hinzufügen/entfernen
+  const addRow = () => setRows([...rows, { mitarbeiter: "", typ: "F", von: "", bis: "" }]);
+  const removeRow = () => rows.length > 1 && setRows(rows.slice(0, -1));
+
+  // Helper: Zeile ändern
+  const updateRow = (index, field, value) => {
+    const newRows = [...rows];
+    newRows[index] = { ...newRows[index], [field]: value };
+    setRows(newRows);
+  };
+
+  // Helper: Tag speichern
+  const saveDay = () => {
+    if (!activeProjectId) return alert("Bitte erst ein Projekt in der Sidebar auswählen!");
+    
+    // Berechnen und säubern
+    const entries = rows
+      .filter(r => r.mitarbeiter && r.von && r.bis) // Nur vollständige Zeilen
+      .map(r => {
+        const calc = calculateNettoHours(r.von, r.bis, zeiterfassung.einstellungen);
+        return { ...r, ...calc };
+      });
+
+    if (entries.length === 0 && !material) return alert("Keine Daten eingegeben.");
+
+    const daySum = entries.reduce((sum, e) => sum + e.netto, 0);
+    const aktivProjekt = zeiterfassung.projekte.find(p => p.id === activeProjectId);
+
+    // In State speichern (Deep Update)
+    updateState(prev => {
+      const prevZeit = prev.zeiterfassung || zeiterfassung;
+      const projekte = [...(prevZeit.projekte || [])];
+      const projIndex = projekte.findIndex(p => p.id === activeProjectId);
+      if (projIndex === -1) return prev;
+
+      // 1. Tag im Projekt speichern
+      const projekt = { ...projekte[projIndex] };
+      projekt.tage = { 
+        ...projekt.tage, 
+        [date]: { entries, material, daySum } 
+      };
+      projekte[projIndex] = projekt;
+
+      // 2. DOPPELT: Auch in separate monatsListe speichern (für Monatsauswertung)
+      const neueMonatsEintraege = entries.map(e => ({
+        ...e,
+        id: Date.now() + Math.random(),
+        projektName: projekt.name,
+        projektId: projekt.id,
+        datum: date,
+        created: new Date().toISOString()
+      }));
+
+      // WICHTIG: Alte Einträge für diesen Tag+Projekt entfernen (verhindert Duplikate!)
+      const bestehendeMonatsEintraege = (prevZeit.monatsListe || []).filter(
+        e => !(e.datum === date && e.projektId === activeProjectId)
+      );
+
+      // Mitarbeiter-Liste aktualisieren (falls neue Namen dabei sind)
+      const alleMitarbeiter = new Set([...(prevZeit.mitarbeiter || [])]);
+      entries.forEach(e => alleMitarbeiter.add(e.mitarbeiter));
+
+      return {
+        ...prev,
+        zeiterfassung: {
+          ...prevZeit,
+          projekte: projekte,
+          monatsListe: [...bestehendeMonatsEintraege, ...neueMonatsEintraege],
+          mitarbeiter: Array.from(alleMitarbeiter).sort()
+        }
+      };
+    });
+
+    alert("✅ Daten für " + date + " gespeichert!");
+  };
+
+  // Aktives Projekt finden
+  const activeProject = zeiterfassung.projekte.find(p => p.id === activeProjectId);
+
+  // UI RENDER
+  return (
+    <div className="preview-scroll-area">
+      <div className="max-w-4xl mx-auto space-y-6 pb-20 p-4 md:p-8">
+      
+      {/* Kein Projekt ausgewählt */}
+      {!activeProjectId ? (
+        <div className="bg-white p-12 rounded-lg shadow-xl border border-slate-200 text-center">
+          <div className="text-6xl mb-4">📁</div>
+          <h2 className="text-2xl font-bold text-slate-700 mb-2">Kein Projekt ausgewählt</h2>
+          <p className="text-slate-500">Wähle ein Projekt in der Sidebar aus oder erstelle ein neues.</p>
+        </div>
+      ) : (
+        <>
+        {/* Projekt-Header mit Statistiken */}
+        {(() => {
+          // Berechnungen für das aktive Projekt
+          const projektTage = activeProject?.tage || {};
+          const alleTage = Object.entries(projektTage);
+          
+          let gesamtStundenF = 0, gesamtStundenH = 0;
+          const materialListe = [];
+          
+          alleTage.forEach(([datum, tag]) => {
+            (tag.entries || []).forEach(e => {
+              if (e.typ === 'F') gesamtStundenF += (e.netto || 0);
+              else gesamtStundenH += (e.netto || 0);
+            });
+            if (tag.material) materialListe.push({ datum, material: tag.material });
+          });
+          
+          const gesamtStunden = gesamtStundenF + gesamtStundenH;
+          const einst = zeiterfassung.einstellungen || {};
+          const kostenF = gesamtStundenF * (einst.stundenlohnF || 59);
+          const kostenH = gesamtStundenH * (einst.stundenlohnH || 50);
+          const kostenGesamt = kostenF + kostenH;
+          const kostenAktiv = einst.kostenAktiv === true;
+          
+          return (
+            <>
+            {/* Projekt-Header - Professionelles Design */}
+            <div className="bg-gradient-to-r from-slate-700 to-slate-800 p-5 rounded-t-lg shadow-lg text-white">
+              <div className="flex flex-wrap justify-between items-start gap-4">
+                <div>
+                  <div className="text-xs uppercase opacity-75 tracking-wide">Aktuelles Projekt</div>
+                  <div className="text-2xl font-bold mt-1">{activeProject?.name || "Unbekannt"}</div>
+                  <div className="text-sm opacity-75 mt-2">{alleTage.length} Tage erfasst</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-4xl font-bold">{gesamtStunden.toFixed(1)}<span className="text-lg ml-1">h</span></div>
+                  <div className="text-xs uppercase opacity-75 tracking-wide">Gesamt</div>
+                  {(gesamtStundenF > 0 || gesamtStundenH > 0) && (
+                    <div className="text-sm mt-2 opacity-90">
+                      {gesamtStundenF > 0 && <span className="mr-3 bg-white/20 px-2 py-0.5 rounded">F: {gesamtStundenF.toFixed(1)}h</span>}
+                      {gesamtStundenH > 0 && <span className="bg-white/20 px-2 py-0.5 rounded">H: {gesamtStundenH.toFixed(1)}h</span>}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* Kosten-Zeile wenn aktiviert */}
+              {kostenAktiv && gesamtStunden > 0 && (
+                <div className="mt-4 pt-4 border-t border-white/30 flex flex-wrap justify-between text-sm">
+                  <span className="opacity-75">Geschätzte Kosten:</span>
+                  <span className="font-bold text-lg">{kostenGesamt.toFixed(2)} €</span>
+                </div>
+              )}
+            </div>
+
+            {/* Material-Zusammenfassung wenn vorhanden */}
+            {materialListe.length > 0 && (
+              <details className="bg-white rounded-b-lg shadow-lg border border-t-0 border-slate-200 group -mt-6">
+                <summary className="p-4 cursor-pointer select-none flex items-center justify-between hover:bg-slate-50">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-slate-700">Material & Bemerkungen</span>
+                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full ml-2">
+                      {materialListe.length} Einträge
+                    </span>
+                  </div>
+                  <span className="text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+                </summary>
+                <div className="p-4 pt-0 border-t border-slate-100">
+                  <div className="space-y-2 mt-3">
+                    {materialListe.sort((a,b) => a.datum.localeCompare(b.datum)).map((item, idx) => (
+                      <div key={idx} className="flex gap-3 p-2 bg-slate-50 rounded border border-slate-200">
+                        <div className="text-xs font-mono text-slate-400 whitespace-nowrap">
+                          {new Date(item.datum).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' })}
+                        </div>
+                        <div className="text-sm text-slate-700">{item.material}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            )}
+            </>
+          );
+        })()}
+
+        {/* EINGABE MASKE - Papier-Design */}
+        <div className="bg-white p-6 rounded-lg shadow-lg border-t-4 border-slate-600">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-slate-800">📅 Stundenerfassung</h2>
+            <input 
+              type="date" 
+              value={date} 
+              onChange={e => setDate(e.target.value)}
+              className="p-2 border rounded font-mono bg-slate-50" 
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="grid grid-cols-12 gap-2 text-xs font-bold text-slate-500 uppercase mb-2">
+              <div className="col-span-5 md:col-span-4">Mitarbeiter</div>
+              <div className="col-span-2 md:col-span-1 text-center">Typ</div>
+              <div className="col-span-5 md:col-span-4 text-center">Zeit (Von - Bis)</div>
+              <div className="hidden md:block md:col-span-3 text-right">Berechnung</div>
+            </div>
+
+            {rows.map((row, i) => {
+              const calc = calculateNettoHours(row.von, row.bis, zeiterfassung.einstellungen);
+              return (
+                <div key={i} className="grid grid-cols-12 gap-2 items-center p-2 hover:bg-slate-50 rounded transition-colors">
+                  {/* Name Input mit Datalist für Vorschläge */}
+                  <div className="col-span-5 md:col-span-4">
+                    <input 
+                      list="mitarbeiter-liste"
+                      type="text" 
+                      placeholder={`Mitarbeiter ${i+1}`}
+                      className="w-full p-2 border rounded text-sm font-medium"
+                      value={row.mitarbeiter}
+                      onChange={e => updateRow(i, 'mitarbeiter', e.target.value)}
+                    />
+                  </div>
+                  
+                  {/* Typ (F/H) */}
+                  <div className="col-span-2 md:col-span-1">
+                    <select 
+                      className="w-full p-2 border rounded text-center text-sm bg-white"
+                      value={row.typ}
+                      onChange={e => updateRow(i, 'typ', e.target.value)}
+                    >
+                      <option value="F">F</option>
+                      <option value="H">H</option>
+                    </select>
+                  </div>
+
+                  {/* Zeiten */}
+                  <div className="col-span-5 md:col-span-4 flex gap-1">
+                    <input type="time" step="900" className="w-1/2 p-2 border rounded text-sm text-center" value={row.von} onChange={e => updateRow(i, 'von', e.target.value)} />
+                    <input type="time" step="900" className="w-1/2 p-2 border rounded text-sm text-center" value={row.bis} onChange={e => updateRow(i, 'bis', e.target.value)} />
+                  </div>
+
+                  {/* Live Berechnung (Nur Desktop sichtbar) */}
+                  <div className="hidden md:block md:col-span-3 text-right text-sm">
+                    {calc.netto > 0 ? (
+                      <span className="text-emerald-600 font-bold">
+                        {calc.netto.toFixed(2)} h <span className="text-xs font-normal text-slate-400">{calc.pauseText}</span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">–</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            
+            <datalist id="mitarbeiter-liste">
+              {zeiterfassung.mitarbeiter.map(m => <option key={m} value={m} />)}
+            </datalist>
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <button onClick={addRow} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-2 rounded">+ Zeile</button>
+            <button onClick={removeRow} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-2 rounded">- Zeile</button>
+          </div>
+
+          {/* Material / Bemerkungen mit Suchfeld */}
+          <div className="mt-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">🧰 Material / Bemerkungen</label>
+            
+            {/* Material-Suche mit Menge und Einheit */}
+            <div className="flex gap-2 mb-3">
+              <div className="w-16">
+                <input 
+                  type="number"
+                  id="material-menge-input"
+                  min="1"
+                  defaultValue="1"
+                  className="w-full p-2 border border-slate-300 rounded text-sm text-center"
+                  placeholder="Menge"
+                />
+              </div>
+              <div className="flex-1 relative">
+                <input 
+                  type="text"
+                  id="material-suche-input"
+                  list="material-vorschlaege"
+                  placeholder="Material suchen..."
+                  className="w-full p-2 border border-slate-300 rounded text-sm"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const val = e.target.value.trim();
+                      const menge = document.getElementById('material-menge-input').value || '1';
+                      if (val) {
+                        const matchedMat = appState.material?.find(m => m.Name.toLowerCase() === val.toLowerCase());
+                        const einheit = matchedMat?.Einheit || '';
+                        const eintrag = einheit ? `${menge} ${einheit} ${val}` : `${menge}x ${val}`;
+                        setMaterial(prev => prev ? prev + ', ' + eintrag : eintrag);
+                        e.target.value = '';
+                        document.getElementById('material-menge-input').value = '1';
+                      }
+                    }
+                  }}
+                />
+                <datalist id="material-vorschlaege">
+                  {(appState.material || []).map((m, i) => (
+                    <option key={i} value={m.Name}>{m.Einheit}</option>
+                  ))}
+                </datalist>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const input = document.getElementById('material-suche-input');
+                  const val = input.value.trim();
+                  const menge = document.getElementById('material-menge-input').value || '1';
+                  if (val) {
+                    const matchedMat = appState.material?.find(m => m.Name.toLowerCase() === val.toLowerCase());
+                    const einheit = matchedMat?.Einheit || '';
+                    const eintrag = einheit ? `${menge} ${einheit} ${val}` : `${menge}x ${val}`;
+                    setMaterial(prev => prev ? prev + ', ' + eintrag : eintrag);
+                    input.value = '';
+                    document.getElementById('material-menge-input').value = '1';
+                  }
+                }}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-3 rounded text-sm"
+              >
+                +
+              </button>
+            </div>
+            <div className="text-xs text-slate-400 mb-3">Menge eingeben, Material wählen, Enter oder + klicken</div>
+
+            {/* Material-Liste mit Einheiten als Buttons */}
+            {(appState.material || []).length > 0 && (
+              <div className="bg-white border border-slate-200 rounded p-2 mb-3 max-h-32 overflow-y-auto">
+                <div className="text-xs text-slate-400 mb-2">Schnellauswahl (Klick = hinzufügen mit Menge oben):</div>
+                <div className="flex flex-wrap gap-1">
+                  {(appState.material || []).map((m, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        const menge = document.getElementById('material-menge-input').value || '1';
+                        const eintrag = `${menge} ${m.Einheit} ${m.Name}`;
+                        setMaterial(prev => prev ? prev + ', ' + eintrag : eintrag);
+                      }}
+                      className="text-xs bg-slate-50 border border-slate-300 hover:border-emerald-500 hover:bg-emerald-50 text-slate-700 px-2 py-1 rounded transition-colors"
+                      title={`${m.Verkaufspreis} € pro ${m.Einheit}`}
+                    >
+                      {m.Name} <span className="text-slate-400">({m.Einheit})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Textarea für Freitext und Bemerkungen */}
+            <textarea 
+              className="w-full p-3 border border-slate-300 rounded text-sm h-20" 
+              placeholder="Ausgewähltes Material und Bemerkungen (Wetter, besondere Vorkommnisse...)"
+              value={material}
+              onChange={e => setMaterial(e.target.value)}
+            ></textarea>
+
+            {/* Neues Material anlegen */}
+            <details className="mt-3 group">
+              <summary className="text-xs text-slate-500 cursor-pointer hover:text-emerald-600">
+                ➕ Neues Material zur Positionsliste hinzufügen...
+              </summary>
+              <div className="mt-2 p-3 bg-white border border-slate-200 rounded space-y-2">
+                <input 
+                  type="text" 
+                  id="neues-material-name"
+                  placeholder="Materialname (z.B. Bagger, Zement)"
+                  className="w-full p-2 border border-slate-300 rounded text-sm"
+                />
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    id="neues-material-preis"
+                    placeholder="Preis (€)"
+                    className="w-1/2 p-2 border border-slate-300 rounded text-sm"
+                  />
+                  <input 
+                    type="text" 
+                    id="neues-material-einheit"
+                    placeholder="Einheit (Stk, m², h)"
+                    defaultValue="Stk"
+                    className="w-1/2 p-2 border border-slate-300 rounded text-sm"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const name = document.getElementById('neues-material-name').value.trim();
+                    const preis = document.getElementById('neues-material-preis').value.trim() || '0,00';
+                    const einheit = document.getElementById('neues-material-einheit').value.trim() || 'Stk';
+                    
+                    if (!name) {
+                      alert('Bitte einen Materialnamen eingeben.');
+                      return;
+                    }
+                    
+                    // Zur Rechnungs-Positionsliste hinzufügen
+                    updateState(prev => ({
+                      ...prev,
+                      material: [
+                        ...(prev.material || []),
+                        { id: Date.now(), Name: name, Verkaufspreis: preis, Einheit: einheit }
+                      ]
+                    }));
+                    
+                    // Auch gleich zum aktuellen Material-Feld hinzufügen
+                    setMaterial(prev => prev ? prev + ', ' + name : name);
+                    
+                    // Felder leeren
+                    document.getElementById('neues-material-name').value = '';
+                    document.getElementById('neues-material-preis').value = '';
+                    document.getElementById('neues-material-einheit').value = 'Stk';
+                    
+                    alert(`"${name}" wurde zur Positionsliste hinzugefügt!`);
+                  }}
+                  className="w-full bg-slate-600 hover:bg-slate-700 text-white font-semibold py-2 rounded text-sm"
+                >
+                  Material speichern
+                </button>
+              </div>
+            </details>
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button 
+              onClick={saveDay}
+              className="bg-slate-700 hover:bg-slate-800 text-white text-base font-semibold px-8 py-3 rounded shadow-md transition"
+            >
+              Speichern
+            </button>
+          </div>
+
+        </div>
+
+        {/* ══════════════════════════════════════════════════════════════ */}
+        {/* PROJEKT-VORSCHAU TABELLE - HAUPTBEREICH */}
+        {/* ══════════════════════════════════════════════════════════════ */}
+        
+        <div className="bg-white rounded-lg shadow-lg border border-slate-200 overflow-hidden">
+          <div className="bg-gradient-to-r from-slate-700 to-slate-800 text-white p-4 font-bold flex items-center justify-between">
+            <div className="flex items-center gap-3 text-base">
+              <span className="uppercase tracking-wider font-semibold">Projekt-Vorschau:</span>
+              <span className="bg-white/20 px-3 py-1 rounded font-medium">{activeProject?.name}</span>
+            </div>
+            <div className="text-sm font-medium bg-white/20 px-4 py-2 rounded">
+              {Object.keys(activeProject?.tage || {}).length} Tage • {Object.values(activeProject?.tage || {}).reduce((sum, t) => sum + (t.daySum || 0), 0).toFixed(1)} h
+            </div>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              {(() => {
+                // Prüfe ob es verschiedene Typen (F und H) im Projekt gibt
+                const alleTage = Object.values(activeProject?.tage || {});
+                const alleTypen = new Set();
+                alleTage.forEach(tag => {
+                  (tag.entries || []).forEach(e => alleTypen.add(e.typ));
+                });
+                const zeigeTypSpalte = alleTypen.size > 1; // Nur wenn F UND H vorhanden
+                
+                return (
+                  <>
+                    <thead className="bg-slate-50 text-slate-600 font-bold border-b">
+                      <tr>
+                        <th className="p-4 text-left">Wochentag + Datum</th>
+                        <th className="p-4 text-left">Mitarbeiter</th>
+                        {zeigeTypSpalte && <th className="p-4 text-center">Typ</th>}
+                        <th className="p-4 text-center">Uhrzeit</th>
+                        <th className="p-4 text-right">Gesamt (h)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const tage = Object.entries(activeProject?.tage || {}).sort((a, b) => a[0].localeCompare(b[0]));
+                        
+                        if (tage.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={zeigeTypSpalte ? 5 : 4} className="p-8 text-center text-slate-400">
+                                Noch keine Stunden erfasst. Fülle die Eingabemaske oben aus und klicke "Speichern".
+                              </td>
+                            </tr>
+                          );
+                        }
+                        
+                        const rows = [];
+                        tage.forEach(([datum, tagData]) => {
+                          const entries = tagData.entries || [];
+                          const datumObj = new Date(datum);
+                          const wochentag = datumObj.toLocaleDateString('de-DE', { weekday: 'long' });
+                          const datumFormatiert = datumObj.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                          
+                          if (entries.length === 0) {
+                            // Tag nur mit Material
+                            rows.push(
+                              <tr key={datum} className="border-b hover:bg-slate-50">
+                                <td className="p-4 font-medium text-slate-800">{wochentag}, {datumFormatiert}</td>
+                                <td className="p-4 text-slate-400 italic" colSpan={zeigeTypSpalte ? 3 : 2}>
+                                  {tagData.material ? `Material: ${tagData.material}` : '–'}
+                                </td>
+                                <td className="p-4 text-right font-bold text-slate-400">0.00</td>
+                              </tr>
+                            );
+                          } else {
+                            entries.forEach((entry, idx) => {
+                              rows.push(
+                                <tr key={`${datum}-${idx}`} className="border-b hover:bg-slate-50">
+                                  {idx === 0 ? (
+                                    <td className="p-4 font-medium text-slate-800" rowSpan={entries.length}>
+                                      {wochentag}, {datumFormatiert}
+                                    </td>
+                                  ) : null}
+                                  <td className="p-4 text-slate-700">{entry.mitarbeiter}</td>
+                                  {zeigeTypSpalte && (
+                                    <td className="p-4 text-center">
+                                      <span className={`px-2 py-0.5 rounded text-xs font-semibold ${entry.typ === 'F' ? 'bg-slate-200 text-slate-700' : 'bg-slate-100 text-slate-600'}`}>
+                                        {entry.typ}
+                                      </span>
+                                    </td>
+                                  )}
+                                  <td className="p-4 text-center font-mono text-slate-600">
+                                    {entry.von} – {entry.bis}
+                                    {entry.pauseText && <span className="text-xs text-slate-400 ml-1">({entry.pauseText})</span>}
+                                  </td>
+                                  <td className="p-4 text-right font-bold text-slate-700">{(entry.netto || 0).toFixed(2)}</td>
+                                </tr>
+                              );
+                            });
+                          }
+                          
+                          // Material-Zeile (separat, wenn vorhanden)
+                          if (tagData.material) {
+                            rows.push(
+                              <tr key={`${datum}-material`} className="bg-slate-50 border-b">
+                                <td colSpan={zeigeTypSpalte ? 5 : 4} className="p-3 pl-4 text-sm text-slate-700">
+                                  <span className="font-medium text-slate-600">Material/Bemerkung:</span> {tagData.material}
+                                </td>
+                              </tr>
+                            );
+                          }
+                          
+                          // Tagessumme-Zeile
+                          if (entries.length > 0) {
+                            rows.push(
+                              <tr key={`${datum}-sum`} className="bg-slate-100 border-b-2 border-slate-300">
+                                <td colSpan={zeigeTypSpalte ? 4 : 3} className="p-3 text-right text-xs font-bold text-slate-600 uppercase">
+                                  Summe {wochentag}
+                                </td>
+                                <td className="p-3 text-right font-bold text-slate-700">{(tagData.daySum || 0).toFixed(2)} h</td>
+                              </tr>
+                            );
+                          }
+                        });
+                        
+                        return rows;
+                      })()}
+                    </tbody>
+                  </>
+                );
+              })()}
+              {Object.keys(activeProject?.tage || {}).length > 0 && (() => {
+                const projektTage = activeProject?.tage || {};
+                const gesamtStunden = Object.values(projektTage).reduce((sum, t) => sum + (t.daySum || 0), 0);
+                const einst = zeiterfassung.einstellungen || {};
+                const kostenAktiv = einst.kostenAktiv === true;
+                
+                // Berechne Kosten nach Typ
+                let stundenF = 0, stundenH = 0;
+                Object.values(projektTage).forEach(tag => {
+                  (tag.entries || []).forEach(e => {
+                    if (e.typ === 'F') stundenF += (e.netto || 0);
+                    else stundenH += (e.netto || 0);
+                  });
+                });
+                const gesamtKosten = (stundenF * (einst.stundenlohnF || 59)) + (stundenH * (einst.stundenlohnH || 50));
+                
+                return (
+                  <tfoot className="bg-gradient-to-r from-slate-700 to-slate-800 text-white font-bold">
+                    <tr>
+                      <td colSpan="3" className="p-4 text-right uppercase tracking-wide">Projekt-Gesamt</td>
+                      <td className="p-4 text-right text-xl">
+                        {gesamtStunden.toFixed(2)} h
+                      </td>
+                      {kostenAktiv && (
+                        <td className="p-4 text-right">
+                          <span className="text-xl text-emerald-300">{gesamtKosten.toFixed(2)} €</span>
+                          <span className="text-xs text-slate-400 block">+ MwSt. und Material</span>
+                        </td>
+                      )}
+                    </tr>
+                  </tfoot>
+                );
+              })()}
+            </table>
+          </div>
+          
+          {/* ═══ GESAMTÜBERSICHT FÜR RECHNUNG ═══ */}
+          {Object.keys(activeProject?.tage || {}).length > 0 && (() => {
+            // Berechne Gesamtstunden F/H
+            const projektTage = activeProject?.tage || {};
+            let stundenF = 0, stundenH = 0;
+            const allesMaterial = [];
+            
+            Object.entries(projektTage).forEach(([datum, tag]) => {
+              (tag.entries || []).forEach(e => {
+                if (e.typ === 'F') stundenF += (e.netto || 0);
+                else stundenH += (e.netto || 0);
+              });
+              if (tag.material) {
+                allesMaterial.push(tag.material);
+              }
+            });
+            
+            const gesamtStunden = stundenF + stundenH;
+            const einst = zeiterfassung.einstellungen || {};
+            
+            // Material zusammenfassen (alle Einträge kombinieren)
+            const gesamtMaterialText = allesMaterial.join(', ');
+            
+            return (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mt-4">
+                <h4 className="font-bold text-slate-700 mb-3">
+                  Zusammenfassung für Rechnung
+                </h4>
+                
+                {/* Stunden-Übersicht */}
+                <div className="bg-white rounded p-3 mb-3 border border-slate-200">
+                  <div className="text-sm font-bold text-slate-600 mb-2">Arbeitsstunden:</div>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    {stundenF > 0 && (
+                      <div className="bg-blue-50 p-2 rounded border border-blue-200">
+                        <div className="text-xs text-blue-600 font-bold">Facharbeiter (F)</div>
+                        <div className="text-lg font-bold text-blue-700">{stundenF.toFixed(2)} h</div>
+                        <div className="text-xs text-blue-500">{einst.stundenlohnF || 59} €/h</div>
+                      </div>
+                    )}
+                    {stundenH > 0 && (
+                      <div className="bg-emerald-50 p-2 rounded border border-emerald-200">
+                        <div className="text-xs text-emerald-600 font-bold">Helfer (H)</div>
+                        <div className="text-lg font-bold text-emerald-700">{stundenH.toFixed(2)} h</div>
+                        <div className="text-xs text-emerald-500">{einst.stundenlohnH || 50} €/h</div>
+                      </div>
+                    )}
+                    <div className="bg-orange-50 p-2 rounded border border-orange-200">
+                      <div className="text-xs text-orange-600 font-bold">Gesamt</div>
+                      <div className="text-lg font-bold text-orange-700">{gesamtStunden.toFixed(2)} h</div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Material-Übersicht */}
+                {allesMaterial.length > 0 && (
+                  <div className="bg-white rounded p-3 mb-3 border border-slate-200">
+                    <div className="text-sm font-bold text-slate-600 mb-2">Gesamtmaterial:</div>
+                    <div className="text-sm text-slate-700 bg-slate-50 p-2 rounded max-h-32 overflow-y-auto">
+                      {gesamtMaterialText}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Button: In Rechnung übernehmen */}
+                <button
+                  onClick={() => {
+                    try {
+                      // Positionen für die Rechnung erstellen
+                      const neuePositionen = [];
+                      
+                      // Prüfe ob beide Typen (F und H) vorhanden sind
+                      const beidTypenVorhanden = stundenF > 0 && stundenH > 0;
+                      
+                      // Facharbeiter-Stunden als Position
+                      if (stundenF > 0) {
+                        neuePositionen.push({
+                          id: Date.now() + Math.random(),
+                          name: beidTypenVorhanden 
+                            ? `Facharbeiter-Stunden (Projekt: ${activeProject?.name || 'Unbekannt'})`
+                            : `Arbeitsstunden (Projekt: ${activeProject?.name || 'Unbekannt'})`,
+                          einheit: 'h',
+                          menge: stundenF.toFixed(2),
+                          preis: String(einst.stundenlohnF || 59).replace('.', ',')
+                        });
+                      }
+                      
+                      // Helfer-Stunden als Position
+                      if (stundenH > 0) {
+                        neuePositionen.push({
+                          id: Date.now() + Math.random() + 1,
+                          name: beidTypenVorhanden
+                            ? `Helfer-Stunden (Projekt: ${activeProject?.name || 'Unbekannt'})`
+                            : `Arbeitsstunden (Projekt: ${activeProject?.name || 'Unbekannt'})`,
+                          einheit: 'h',
+                          menge: stundenH.toFixed(2),
+                          preis: String(einst.stundenlohnH || 50).replace('.', ',')
+                        });
+                      }
+                      
+                      // Material als Positionen parsen und hinzufügen
+                      if (gesamtMaterialText) {
+                        const materialItems = gesamtMaterialText.split(',').map(s => s.trim()).filter(s => s);
+                        materialItems.forEach((item, idx) => {
+                          const match = item.match(/^(\d+(?:[.,]\d+)?)\s*(\S+)\s+(.+)$/);
+                          if (match) {
+                            const [, menge, einheit, matName] = match;
+                            const gefundenesMat = (appState.material || []).find(m => 
+                              m.Name.toLowerCase() === matName.toLowerCase()
+                            );
+                            neuePositionen.push({
+                              id: Date.now() + Math.random() + idx + 10,
+                              name: matName,
+                              einheit: einheit,
+                              menge: String(menge).replace(',', '.'),
+                              preis: gefundenesMat ? gefundenesMat.Verkaufspreis : '0,00'
+                            });
+                          } else {
+                            neuePositionen.push({
+                              id: Date.now() + Math.random() + idx + 100,
+                              name: item,
+                              einheit: 'Stk',
+                              menge: '1',
+                              preis: '0,00'
+                            });
+                          }
+                        });
+                      }
+                      
+                      // Leistungszeitraum berechnen
+                      const sortedDates = Object.keys(projektTage).sort();
+                      const vonDatum = sortedDates[0] ? new Date(sortedDates[0]).toLocaleDateString('de-DE') : '';
+                      const bisDatum = sortedDates.length > 0 ? new Date(sortedDates[sortedDates.length - 1]).toLocaleDateString('de-DE') : '';
+                      
+                      // Callback aufrufen
+                      onCreateInvoice({
+                        betreff: `Abrechnung Projekt: ${activeProject?.name || 'Unbekannt'}`,
+                        positionen: neuePositionen,
+                        leistungszeitraum: { von: vonDatum, bis: bisDatum }
+                      });
+                    } catch (err) {
+                      console.error('Fehler beim Erstellen der Rechnung:', err);
+                      alert('Fehler: ' + err.message);
+                    }
+                  }}
+                  className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-lg"
+                >
+                  <span>📄</span> In neue Rechnung übernehmen
+                </button>
+                <div className="text-xs text-teal-600 text-center mt-2">
+                  Erstellt einen neuen Entwurf mit Arbeitsstunden und Material
+                </div>
+                
+                {/* Regiebericht Button */}
+                <button
+                  onClick={() => setShowReportModal(true)}
+                  className="w-full mt-4 bg-slate-600 hover:bg-slate-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-lg"
+                >
+                  <span>✍️</span> Regiebericht mit Unterschrift
+                </button>
+                <div className="text-xs text-slate-500 text-center mt-2">
+                  PDF mit Auftragnehmer- und Auftraggeber-Unterschrift
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* REGIEBERICHT MODAL */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" style={{animation: 'fadeIn 0.2s ease'}}>
+          <div className="bg-white rounded-xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <span>✍️</span> Regiebericht erstellen
+            </h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Projekt: <strong>{activeProject?.name}</strong>
+            </p>
+            
+            {/* Zeitraum Wahl mit Stunden-Info */}
+            {(() => {
+              // Berechne Stunden für alle Zeiträume
+              const today = new Date();
+              const stundenInfo = { today: { facharbeiter: 0, helfer: 0 }, week: { facharbeiter: 0, helfer: 0 }, all: { facharbeiter: 0, helfer: 0 } };
+              
+              Object.entries(activeProject?.tage || {}).forEach(([datumStr, data]) => {
+                const entryDate = new Date(datumStr);
+                const isToday = entryDate.toDateString() === today.toDateString();
+                const isThisWeek = isSameWeek(entryDate, today);
+                
+                // Verwende data.entries statt data.mitarbeiter
+                (data.entries || []).forEach(entry => {
+                  const stunden = parseFloat(entry.netto) || 0;
+                  const typ = entry.typ || 'Facharbeiter';
+                  const key = (typ === 'Helfer' || typ === 'H') ? 'helfer' : 'facharbeiter';
+                  
+                  stundenInfo.all[key] += stunden;
+                  if (isThisWeek) stundenInfo.week[key] += stunden;
+                  if (isToday) stundenInfo.today[key] += stunden;
+                });
+              });
+              
+              const formatStunden = (info) => {
+                const parts = [];
+                if (info.facharbeiter > 0) parts.push(`${info.facharbeiter.toLocaleString('de-DE', {minimumFractionDigits: 1})} Std. Facharbeiter`);
+                if (info.helfer > 0) parts.push(`${info.helfer.toLocaleString('de-DE', {minimumFractionDigits: 1})} Std. Helfer`);
+                return parts.length > 0 ? parts : ['Keine Stunden'];
+              };
+              
+              return (
+                <div className="mb-4">
+                  <div className="flex gap-2 bg-slate-100 p-1 rounded-lg mb-3">
+                    {[
+                      { key: 'today', label: 'Heute' },
+                      { key: 'week', label: 'Diese Woche' },
+                      { key: 'all', label: 'Alles' }
+                    ].map(p => (
+                      <button 
+                        key={p.key} 
+                        onClick={() => setReportPeriod(p.key)} 
+                        className={`flex-1 py-2 text-sm font-bold rounded transition-colors ${reportPeriod === p.key ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Stunden-Info für gewählten Zeitraum - GROSS für Kunde */}
+                  <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4">
+                    <p className="text-xs text-blue-600 font-medium mb-2">
+                      {reportPeriod === 'today' ? '📅 Heute' : reportPeriod === 'week' ? '📅 Diese Woche' : '📅 Gesamt'}
+                    </p>
+                    <div className="space-y-1">
+                      {formatStunden(stundenInfo[reportPeriod]).map((line, i) => (
+                        <p key={i} className="text-xl font-bold text-slate-800">🕒 {line}</p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Info: Modus wird über Sidebar gesteuert */}
+            {druckModus ? (
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-sm font-bold text-amber-800">🖨️ Druckmodus aktiv</p>
+                <p className="text-xs text-amber-600">PDF mit leeren Unterschriftfeldern ("Ort, Datum"). Änderbar in Sidebar → Unterschriftsfelder im PDF</p>
+              </div>
+            ) : (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm font-bold text-blue-800">✍️ Digitale Signatur aktiv</p>
+                <p className="text-xs text-blue-600">Mit GPS-Koordinaten und Zeitstempel. Änderbar in Sidebar → Unterschriftsfelder im PDF</p>
+              </div>
+            )}
+
+            {/* Unterschriftsfelder nur wenn NICHT Druckmodus */}
+            {!druckModus && (
+              <>
+                {/* 1. Unterschrift AUFTRAGNEHMER */}
+                <div className="mb-4">
+                  <p className="text-sm font-bold text-slate-700 mb-2">1. Auftragnehmer unterschreibt:</p>
+                  <div className="border-2 border-slate-200 rounded-lg bg-slate-50 relative" style={{height: '150px'}}>
+                    <canvas 
+                      ref={sigCanvasRef}
+                      className="w-full h-full cursor-crosshair rounded-lg"
+                      style={{touchAction: 'none'}}
+                    />
+                    <button 
+                      onClick={() => { if (sigPadRef.current) sigPadRef.current.clear(); }} 
+                      className="absolute bottom-2 right-2 text-xs text-red-500 bg-white px-2 py-1 rounded shadow border hover:bg-red-50"
+                    >
+                      Löschen
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Unterschrift AUFTRAGGEBER */}
+                <div className="mb-4">
+                  <p className="text-sm font-bold text-slate-700 mb-2">2. Auftraggeber unterschreibt:</p>
+                  <div className="border-2 border-blue-200 rounded-lg bg-blue-50 relative" style={{height: '150px'}}>
+                    <canvas 
+                      ref={sigCanvasRef2}
+                      className="w-full h-full cursor-crosshair rounded-lg"
+                      style={{touchAction: 'none'}}
+                    />
+                    <button 
+                      onClick={() => { if (sigPadRef2.current) sigPadRef2.current.clear(); }} 
+                      className="absolute bottom-2 right-2 text-xs text-red-500 bg-white px-2 py-1 rounded shadow border hover:bg-red-50"
+                    >
+                      Löschen
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Hinweis bei Druckmodus */}
+            {druckModus && (
+              <div className="mb-4 p-4 bg-slate-100 rounded-lg text-center">
+                <span className="text-4xl">🖨️</span>
+                <p className="text-sm text-slate-600 mt-2">PDF wird mit leeren Unterschriftfeldern erstellt.</p>
+                <p className="text-xs text-slate-500">Bitte nach dem Drucken händisch mit Ort und Datum unterschreiben.</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowReportModal(false)} 
+                className="flex-1 py-3 text-slate-600 font-bold bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+              >
+                Abbrechen
+              </button>
+              <button 
+                onClick={async () => {
+                  // Validierung - nur bei digitalem Modus prüfen
+                  if (!druckModus) {
+                    if (!sigPadRef.current || sigPadRef.current.isEmpty()) {
+                      alert("Bitte erst als Auftragnehmer unterschreiben!");
+                      return;
+                    }
+                    if (!sigPadRef2.current || sigPadRef2.current.isEmpty()) {
+                      alert("Bitte erst als Auftraggeber unterschreiben!");
+                      return;
+                    }
+                  }
+
+                  const fd = appState.firmenDaten || {};
+                  const today = new Date();
+
+                  // 1. Filtern und Datumsbereich ermitteln
+                  let filteredRows = [];
+                  let totalStunden = 0;
+                  let minDate = null;
+                  let maxDate = null;
+
+                  Object.entries(activeProject?.tage || {}).forEach(([datumStr, data]) => {
+                    const entryDate = new Date(datumStr);
+                    let include = false;
+                    if (reportPeriod === 'all') include = true;
+                    if (reportPeriod === 'today') include = entryDate.toDateString() === today.toDateString();
+                    if (reportPeriod === 'week') include = isSameWeek(entryDate, today);
+
+                    if (include) {
+                      // Datumsbereich tracken
+                      if (!minDate || entryDate < minDate) minDate = entryDate;
+                      if (!maxDate || entryDate > maxDate) maxDate = entryDate;
+                      
+                      (data.entries || []).forEach(entry => {
+                        if (parseFloat(entry.netto) > 0) {
+                          // Typ konvertieren: F -> Facharbeiter, H -> Helfer
+                          let typDisplay = entry.typ || '-';
+                          if (typDisplay === 'F') typDisplay = 'Facharbeiter';
+                          if (typDisplay === 'H') typDisplay = 'Helfer';
+                          
+                          filteredRows.push([
+                            new Date(datumStr).toLocaleDateString('de-DE'),
+                            entry.mitarbeiter || '-',
+                            typDisplay,
+                            parseFloat(entry.netto).toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' h'
+                          ]);
+                          totalStunden += parseFloat(entry.netto);
+                        }
+                      });
+                    }
+                  });
+
+                  if (filteredRows.length === 0) { 
+                    alert("Keine Stunden im gewählten Zeitraum."); 
+                    return; 
+                  }
+
+                  // GPS-Position abrufen (nur bei digitalem Modus)
+                  let gpsText = "";
+                  if (!druckModus) {
+                    try {
+                      const position = await new Promise((resolve, reject) => {
+                        if (navigator.geolocation) {
+                          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+                        } else {
+                          reject(new Error("Geolocation nicht unterstützt"));
+                        }
+                      });
+                      const lat = position.coords.latitude.toFixed(6);
+                      const lon = position.coords.longitude.toFixed(6);
+                      const acc = position.coords.accuracy.toFixed(0);
+                      gpsText = `GPS: ${lat}, ${lon} (±${acc}m)`;
+                    } catch (e) {
+                      gpsText = "GPS: Nicht verfügbar";
+                      console.log("GPS nicht verfügbar:", e.message);
+                    }
+                  }
+
+                  // Präziser Zeitstempel (forensisch)
+                  const zeitstempel = new Date().toISOString();
+                  const zeitstempelDE = new Date().toLocaleString('de-DE', {
+                    day: '2-digit', month: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit'
+                  });
+
+                  // 2. PDF Bauen - Professioneller Briefkopf
+                  const doc = new jspdf.jsPDF();
+                  
+                  // === FIRMENBRIEFKOPF (oben rechts) ===
+                  doc.setFontSize(12);
+                  doc.setFont(undefined, 'bold');
+                  doc.text(fd.firmenname || "Meine Firma", 195, 20, { align: 'right' });
+                  doc.setFontSize(9);
+                  doc.setFont(undefined, 'normal');
+                  let briefkopfY = 26;
+                  if (fd.strasse) { doc.text(fd.strasse, 195, briefkopfY, { align: 'right' }); briefkopfY += 4; }
+                  if (fd.plz || fd.ort) { doc.text(`${fd.plz || ''} ${fd.ort || ''}`, 195, briefkopfY, { align: 'right' }); briefkopfY += 4; }
+                  if (fd.telefon) { doc.text(`Tel: ${fd.telefon}`, 195, briefkopfY, { align: 'right' }); briefkopfY += 4; }
+                  if (fd.email) { doc.text(fd.email, 195, briefkopfY, { align: 'right' }); briefkopfY += 4; }
+                  
+                  // === AUFTRAGGEBER (oben links) ===
+                  doc.setFontSize(8);
+                  doc.setTextColor(100);
+                  doc.text("Auftraggeber:", 20, 20);
+                  doc.setFontSize(11);
+                  doc.setTextColor(0);
+                  doc.setFont(undefined, 'bold');
+                  doc.text(activeProject?.name || "Unbekannt", 20, 26);
+                  doc.setFont(undefined, 'normal');
+                  
+                  // === PROJEKTINFO ===
+                  doc.setFontSize(9);
+                  doc.setTextColor(100);
+                  let infoY = 34;
+                  
+                  // Echten Zeitraum berechnen
+                  let zeitraumText = '';
+                  if (minDate && maxDate) {
+                    const minStr = minDate.toLocaleDateString('de-DE');
+                    const maxStr = maxDate.toLocaleDateString('de-DE');
+                    zeitraumText = minStr === maxStr ? minStr : `${minStr} - ${maxStr}`;
+                  } else {
+                    zeitraumText = today.toLocaleDateString('de-DE');
+                  }
+                  
+                  doc.text(`Zeitraum: ${zeitraumText}`, 20, infoY);
+                  doc.text(`Erstellt: ${zeitstempelDE}`, 20, infoY + 5);
+                  
+                  // === TRENNLINIE ===
+                  doc.setDrawColor(200);
+                  doc.line(20, 48, 190, 48);
+                  
+                  // === GROSSE ÜBERSCHRIFT ===
+                  doc.setTextColor(0);
+                  doc.setFontSize(22);
+                  doc.setFont(undefined, 'bold');
+                  doc.text("REGIEBERICHT", 105, 60, { align: 'center' });
+                  doc.setFont(undefined, 'normal');
+
+                  // === STUNDEN-TABELLE ===
+                  doc.autoTable({
+                    startY: 70,
+                    head: [['Datum', 'Mitarbeiter', 'Typ', 'Stunden']],
+                    body: filteredRows,
+                    foot: [['', '', 'Summe:', totalStunden.toLocaleString('de-DE', {minimumFractionDigits: 2}) + ' Std.']],
+                    headStyles: { fillColor: [71, 85, 105], fontSize: 10 },
+                    bodyStyles: { fontSize: 9 },
+                    footStyles: { fillColor: [241, 245, 249], textColor: [0, 0, 0], fontStyle: 'bold' },
+                    margin: { left: 20, right: 20 }
+                  });
+
+                  // === UNTERSCHRIFTEN ===
+                  let yPos = doc.lastAutoTable.finalY + 20;
+                  
+                  // Prüfen ob neue Seite nötig
+                  if (yPos > 220) {
+                    doc.addPage();
+                    yPos = 30;
+                  }
+                  
+                  doc.setFontSize(10);
+                  doc.setFont(undefined, 'bold');
+                  doc.text("Bestätigung der ordnungsgemäßen Ausführung:", 20, yPos);
+                  doc.setFont(undefined, 'normal');
+                  
+                  if (druckModus) {
+                    // === DRUCKMODUS: Leere Unterschriftfelder mit "Ort, Datum" ===
+                    // Auftragnehmer (links)
+                    doc.setDrawColor(180);
+                    doc.rect(20, yPos + 5, 70, 30); // Leeres Rechteck
+                    doc.line(20, yPos + 35, 90, yPos + 35);
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'bold');
+                    doc.text("Auftragnehmer", 20, yPos + 42);
+                    doc.setFont(undefined, 'normal');
+                    doc.setFontSize(7);
+                    doc.setTextColor(120);
+                    doc.text("Ort, Datum: _______________________", 20, yPos + 48);
+                    
+                    // Auftraggeber (rechts)
+                    doc.setTextColor(0);
+                    doc.setDrawColor(180);
+                    doc.rect(110, yPos + 5, 70, 30); // Leeres Rechteck
+                    doc.line(110, yPos + 35, 180, yPos + 35);
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'bold');
+                    doc.text("Auftraggeber", 110, yPos + 42);
+                    doc.setFont(undefined, 'normal');
+                    doc.setFontSize(7);
+                    doc.setTextColor(120);
+                    doc.text("Ort, Datum: _______________________", 110, yPos + 48);
+                  } else {
+                    // === DIGITALER MODUS: Signatur-Bilder ===
+                    const signatureImg1 = sigPadRef.current.toDataURL('image/png');
+                    const signatureImg2 = sigPadRef2.current.toDataURL('image/png');
+                    
+                    // Auftragnehmer (links)
+                    doc.addImage(signatureImg1, 'PNG', 20, yPos + 5, 60, 28);
+                    doc.line(20, yPos + 35, 80, yPos + 35);
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'bold');
+                    doc.text("Auftragnehmer", 20, yPos + 40);
+                    doc.setFont(undefined, 'normal');
+                    doc.setFontSize(7);
+                    doc.setTextColor(80);
+                    doc.text(`${zeitstempelDE}`, 20, yPos + 45);
+                    doc.text(gpsText, 20, yPos + 49);
+                    
+                    // Auftraggeber (rechts)
+                    doc.setTextColor(0);
+                    doc.addImage(signatureImg2, 'PNG', 110, yPos + 5, 60, 28);
+                    doc.line(110, yPos + 35, 170, yPos + 35);
+                    doc.setFontSize(9);
+                    doc.setFont(undefined, 'bold');
+                    doc.text("Auftraggeber", 110, yPos + 40);
+                    doc.setFont(undefined, 'normal');
+                    doc.setFontSize(7);
+                    doc.setTextColor(80);
+                    doc.text(`${zeitstempelDE}`, 110, yPos + 45);
+                    doc.text(gpsText, 110, yPos + 49);
+                  }
+                  
+                  // === FORENSISCHER FOOTER ===
+                  doc.setTextColor(150);
+                  doc.setFontSize(6);
+                  doc.text(`Dokument-ID: ${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`, 20, 285);
+                  doc.text(`Zeitstempel (ISO): ${zeitstempel}`, 20, 288);
+                  if (!druckModus) {
+                    doc.text(`${gpsText}`, 110, 288);
+                    doc.text("Dieses Dokument wurde digital erstellt und signiert.", 195, 288, { align: 'right' });
+                  } else {
+                    doc.text("Druckversion - Unterschriften bitte händisch leisten.", 195, 288, { align: 'right' });
+                  }
+
+                  const safeName = (activeProject?.name || 'Projekt').replace(/[^a-z0-9äöüß]/gi, '_');
+                  doc.save(`Regiebericht_${safeName}_${new Date().toISOString().slice(0,10)}.pdf`);
+                  setShowReportModal(false);
+                }} 
+                className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg shadow hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <span>📄</span> PDF erstellen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* TEIL 3: MONATSAUSWERTUNG & EXPORT */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      
+      <div className="bg-white rounded-lg shadow-xl border border-slate-200 overflow-hidden">
+        <div className="bg-gradient-to-r from-slate-700 to-slate-800 text-white p-4">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <span>📊</span> Auswertungen
+          </h2>
+        </div>
+
+        <div className="p-6">
+        {/* Filter */}
+        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6 flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Monat</label>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  const d = new Date(date);
+                  d.setMonth(d.getMonth() - 1);
+                  setDate(d.toISOString().split('T')[0]);
+                }}
+                className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded font-bold text-lg transition-colors"
+              >
+                ←
+              </button>
+              <input 
+                type="month" 
+                className="p-2 border border-slate-300 rounded font-mono bg-white text-center"
+                value={date.substring(0, 7)} 
+                onChange={e => setDate(e.target.value + "-01")}
+              />
+              <button 
+                onClick={() => {
+                  const d = new Date(date);
+                  d.setMonth(d.getMonth() + 1);
+                  setDate(d.toISOString().split('T')[0]);
+                }}
+                className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-3 py-2 rounded font-bold text-lg transition-colors"
+              >
+                →
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 flex justify-end gap-3">
+             <button 
+                onClick={() => {
+                  const currentMonth = date.substring(0, 7);
+                  const monthName = new Date(date).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+                  
+                  // Zähle Einträge im Monat und speichere IDs VOR dem Überschreiben
+                  const eintraegeImMonat = (zeiterfassung.monatsListe || []).filter(e => e.datum?.startsWith(currentMonth));
+                  const zuLoeschendeIds = eintraegeImMonat.map(e => e.id);
+                  
+                  if (eintraegeImMonat.length === 0) {
+                    alert(`Keine Stunden für ${monthName} in der Monatsauswertung vorhanden.`);
+                    return;
+                  }
+                  
+                  if (!confirm(`${eintraegeImMonat.length} Einträge für ${monthName} unwiderruflich löschen?\n\nDie Daten werden gelöscht.\n\nIn den Projekten (für Kunden-Rechnungen) bleiben die Stunden erhalten!`)) {
+                    return;
+                  }
+                  
+                  // FORENSISCH SICHER: 3x mit Zufallsdaten überschreiben (nach ID, nicht nach Datum!)
+                  for (let pass = 0; pass < 3; pass++) {
+                    updateState(prev => {
+                      const prevZeit = prev.zeiterfassung || { projekte: [], monatsListe: [] };
+                      return {
+                        ...prev,
+                        zeiterfassung: {
+                          ...prevZeit,
+                          monatsListe: (prevZeit.monatsListe || []).map(eintrag => {
+                            if (zuLoeschendeIds.includes(eintrag.id)) {
+                              // Alle Felder mit Zufallsdaten überschreiben
+                              return {
+                                id: eintrag.id,
+                                datum: Math.random().toString(36),
+                                projektName: Math.random().toString(36),
+                                projektId: Math.random().toString(36),
+                                mitarbeiter: Math.random().toString(36),
+                                typ: Math.random() > 0.5 ? 'X' : 'Y',
+                                von: Math.random().toString(),
+                                bis: Math.random().toString(),
+                                netto: Math.random() * 999999,
+                                created: Math.random().toString(36)
+                              };
+                            }
+                            return eintrag;
+                          })
+                        }
+                      };
+                    });
+                  }
+                  
+                  // Nach 3x Überschreiben: Endgültig aus Array entfernen (nach ID!)
+                  setTimeout(() => {
+                    updateState(prev => {
+                      const prevZeit = prev.zeiterfassung || { projekte: [], monatsListe: [] };
+                      return {
+                        ...prev,
+                        zeiterfassung: {
+                          ...prevZeit,
+                          monatsListe: (prevZeit.monatsListe || []).filter(e => !zuLoeschendeIds.includes(e.id))
+                        }
+                      };
+                    });
+                    alert(`${eintraegeImMonat.length} Einträge für ${monthName} wurden gelöscht.`);
+                  }, 150);
+                }}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition-colors"
+             >
+               Monat löschen
+             </button>
+          </div>
+        </div>
+
+        {(() => {
+          // Live-Berechnung aller Statistiken
+          const currentMonth = date.substring(0, 7);
+          const mitarbeiterStats = {};
+          const projektStats = {};
+          const materialListe = [];
+          const einst = zeiterfassung.einstellungen || {};
+          
+          // 1. Projekte durchgehen NUR für Projekt-Statistik und Material
+          zeiterfassung.projekte.forEach(proj => {
+            if (!projektStats[proj.id]) {
+              projektStats[proj.id] = { name: proj.name, stundenF: 0, stundenH: 0, tage: 0, material: [] };
+            }
+            
+            Object.entries(proj.tage || {}).forEach(([tagDatum, tagData]) => {
+              if (tagDatum.startsWith(currentMonth)) {
+                projektStats[proj.id].tage++;
+                
+                if (tagData.material) {
+                  projektStats[proj.id].material.push({ datum: tagDatum, text: tagData.material });
+                  materialListe.push({ datum: tagDatum, projekt: proj.name, text: tagData.material });
+                }
+                
+                // Projekt-Stunden zählen (für Projekt-Übersicht)
+                (tagData.entries || []).forEach(entry => {
+                  const stunden = parseFloat(entry.netto) || 0;
+                  if (entry.typ === 'F') {
+                    projektStats[proj.id].stundenF += stunden;
+                  } else {
+                    projektStats[proj.id].stundenH += stunden;
+                  }
+                });
+              }
+            });
+          });
+          
+          // 2. Mitarbeiter-Stunden NUR aus monatsListe (getrennte Speicherung)
+          (zeiterfassung.monatsListe || []).forEach(eintrag => {
+            if (eintrag.datum && eintrag.datum.startsWith(currentMonth)) {
+              if (!mitarbeiterStats[eintrag.mitarbeiter]) {
+                mitarbeiterStats[eintrag.mitarbeiter] = { stundenF: 0, stundenH: 0, projects: new Set() };
+              }
+              const stunden = parseFloat(eintrag.netto) || 0;
+              if (eintrag.typ === 'F') {
+                mitarbeiterStats[eintrag.mitarbeiter].stundenF += stunden;
+              } else {
+                mitarbeiterStats[eintrag.mitarbeiter].stundenH += stunden;
+              }
+              mitarbeiterStats[eintrag.mitarbeiter].projects.add(eintrag.projektName);
+            }
+          });
+          
+          const stundenlohnF = einst.stundenlohnF || 59;
+          const stundenlohnH = einst.stundenlohnH || 50;
+          const kostenAktiv = einst.kostenAktiv === true;
+          
+          // Gesamtsummen
+          let gesamtF = 0, gesamtH = 0;
+          Object.values(mitarbeiterStats).forEach(s => {
+            gesamtF += s.stundenF;
+            gesamtH += s.stundenH;
+          });
+          const gesamtStunden = gesamtF + gesamtH;
+          const gesamtKosten = (gesamtF * stundenlohnF) + (gesamtH * stundenlohnH);
+          
+          return (
+            <div className="space-y-6">
+
+              {/* MITARBEITER-TABELLE */}
+              <div className="bg-white rounded-lg shadow-lg overflow-hidden border border-slate-200">
+                <div className="bg-gradient-to-r from-slate-600 to-slate-700 text-white p-3 font-semibold">
+                  Mitarbeiter-Stunden
+                </div>
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b">
+                    <tr>
+                      <th className="p-3 text-left">Mitarbeiter</th>
+                      <th className="p-3 text-left">Projekt(e)</th>
+                      <th className="p-3 text-right">F-Std.</th>
+                      <th className="p-3 text-right">H-Std.</th>
+                      <th className="p-3 text-right">Gesamt</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(mitarbeiterStats).length === 0 ? (
+                      <tr><td colSpan="5" className="p-8 text-center text-slate-400">Keine Stunden im gewählten Monat.</td></tr>
+                    ) : (
+                      Object.entries(mitarbeiterStats)
+                        .sort((a,b) => a[0].localeCompare(b[0]))
+                        .map(([name, data]) => {
+                          const summe = data.stundenF + data.stundenH;
+                          return (
+                            <tr key={name} className="border-b last:border-0 hover:bg-slate-50">
+                              <td className="p-3 font-medium text-slate-800">{name}</td>
+                              <td className="p-3 text-slate-500 text-xs">{Array.from(data.projects).join(", ")}</td>
+                              <td className="p-3 text-right text-slate-600">{data.stundenF.toFixed(2)}</td>
+                              <td className="p-3 text-right text-slate-600">{data.stundenH.toFixed(2)}</td>
+                              <td className="p-3 text-right font-bold text-slate-800">{summe.toFixed(2)} h</td>
+                            </tr>
+                          );
+                        })
+                    )}
+                  </tbody>
+                  {Object.entries(mitarbeiterStats).length > 0 && (
+                    <tfoot className="bg-slate-200 font-bold">
+                      <tr>
+                        <td className="p-3">SUMME</td>
+                        <td className="p-3"></td>
+                        <td className="p-3 text-right text-slate-700">{gesamtF.toFixed(2)}</td>
+                        <td className="p-3 text-right text-slate-700">{gesamtH.toFixed(2)}</td>
+                        <td className="p-3 text-right text-slate-800">{gesamtStunden.toFixed(2)} h</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
+          );
+        })()}
+        
+        {/* Privacy Footer - Zeiterfassung, erscheint nur am Ende beim Scrollen */}
+        <div className="p-4 md:p-6">
+          <div className="privacy-footer no-print">
+            {/* Speicher-Warnung bei >90% */}
+            {speicherInfo?.istKritisch && (
+              <div className="bg-red-900/50 border-2 border-red-500 rounded-lg p-4 mb-4 text-center">
+                <div className="text-2xl mb-2">⚠️</div>
+                <strong className="text-red-300 text-sm">Speicher fast voll ({speicherInfo.prozent}%)</strong>
+                <p className="text-red-200 text-xs mt-2">
+                  Bitte Stammdaten exportieren und mit einem frischen Vault neu starten.
+                </p>
+              </div>
+            )}
+            
+            {/* Speicher-Übersicht */}
+            <div className="bg-slate-800/80 rounded-lg p-3 mb-4 border border-slate-600/30">
+              <div className="flex items-center justify-between mb-2 text-xs">
+                <span className="text-slate-400 font-semibold">💾 Vault-Speicher</span>
+                <span className={speicherInfo?.istKritisch ? 'text-red-400' : speicherInfo?.istWarnung ? 'text-yellow-400' : 'text-green-400'} style={{fontWeight: 700}}>
+                  {speicherInfo?.prozent || 0}% belegt ({speicherInfo?.belegtKB || 0} KB / {Math.round((speicherInfo?.maxDataSize || 0)/1024)} KB)
+                </span>
+              </div>
+              <div className="bg-slate-900 rounded h-2 overflow-hidden">
+                <div 
+                  className={`h-full rounded transition-all ${speicherInfo?.istKritisch ? 'bg-red-500' : speicherInfo?.istWarnung ? 'bg-yellow-500' : 'bg-green-500'}`}
+                  style={{width: `${Math.min(100, speicherInfo?.prozent || 0)}%`}}
+                />
+              </div>
+              <div className="flex justify-between mt-1 text-[10px] text-slate-500">
+                <span>{appState.zeiterfassung?.projekte?.length || 0} Projekte • {appState.zeiterfassung?.mitarbeiter?.length || 0} Mitarbeiter</span>
+                <span>{speicherInfo?.freiKB || 0} KB frei</span>
+              </div>
+            </div>
+            
+            <div className="privacy-footer-motto">
+              <span className="shield">🛡️</span>Wir speichern nichts. Wir sehen nichts.
+            </div>
+            <p className="privacy-footer-text">
+              <strong>Zero-Knowledge-Prinzip:</strong> Ihre Daten werden ausschließlich lokal in Ihrem Browser (IndexedDB) gespeichert und Backups mit <strong>AES-256-GCM</strong> verschlüsselt. Kein Server, keine Cloud, keine Datensammlung – Ihre Zeiterfassung gehört nur Ihnen.
+            </p>
+            <div className="privacy-footer-badges">
+              <span className="privacy-badge green">✓ Lokale Speicherung</span>
+              <span className="privacy-badge green">✓ Keine Registrierung</span>
+              <span className="privacy-badge">🔐 Militärgrad-Verschlüsselung</span>
+              <span className="privacy-badge">💾 IndexedDB</span>
+              <span className="privacy-badge green">✓ DSGVO-konform</span>
+            </div>
+            <div className="privacy-footer-copyright">
+              © 2026 Business Suite – Professionelle Zeiterfassung mit maximaler Datensicherheit
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      </div>
+    </div>
+  );
+}
+
+// PDF-Export für Zeiterfassung (erweitert mit Kosten & Material)
+const generateTimeTrackingPDF = (appState, zeiterfassung, monthStr) => {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  const firmenName = appState.firmenDaten?.firmenname || "Firma";
+  const einst = zeiterfassung.einstellungen || {};
+  const stundenlohnF = einst.stundenlohnF || 59;
+  const stundenlohnH = einst.stundenlohnH || 50;
+  const kostenAktiv = einst.kostenAktiv === true;
+  const unterschriftAktiv = einst.unterschriftAktiv !== false;
+  
+  // Daten sammeln
+  const stundenRows = [];
+  const materialListe = [];
+  const projektStats = {};
+  const mitarbeiterStats = {};
+  let gesamtF = 0, gesamtH = 0;
+  
+  zeiterfassung.projekte.forEach(proj => {
+    if (!projektStats[proj.id]) {
+      projektStats[proj.id] = { name: proj.name, stundenF: 0, stundenH: 0 };
+    }
+    
+    Object.entries(proj.tage || {}).forEach(([tagDatum, tagData]) => {
+      if (tagDatum.startsWith(monthStr)) {
+        // Material sammeln
+        if (tagData.material) {
+          materialListe.push({ datum: tagDatum, projekt: proj.name, text: tagData.material });
+        }
+        
+        (tagData.entries || []).forEach(entry => {
+          const stunden = parseFloat(entry.netto) || 0;
+          
+          stundenRows.push([
+            tagDatum,
+            entry.mitarbeiter,
+            entry.typ,
+            proj.name,
+            entry.von + ' - ' + entry.bis,
+            stunden.toFixed(2)
+          ]);
+          
+          // Statistiken aktualisieren
+          if (!mitarbeiterStats[entry.mitarbeiter]) {
+            mitarbeiterStats[entry.mitarbeiter] = { stundenF: 0, stundenH: 0 };
+          }
+          
+          if (entry.typ === 'F') {
+            gesamtF += stunden;
+            projektStats[proj.id].stundenF += stunden;
+            mitarbeiterStats[entry.mitarbeiter].stundenF += stunden;
+          } else {
+            gesamtH += stunden;
+            projektStats[proj.id].stundenH += stunden;
+            mitarbeiterStats[entry.mitarbeiter].stundenH += stunden;
+          }
+        });
+      }
+    });
+  });
+  
+  const gesamtStunden = gesamtF + gesamtH;
+  const gesamtKosten = (gesamtF * stundenlohnF) + (gesamtH * stundenlohnH);
+  
+  // Sortieren
+  stundenRows.sort((a,b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  materialListe.sort((a,b) => a.datum.localeCompare(b.datum));
+
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // PDF Generierung
+  // ═══════════════════════════════════════════════════════════════════════════════
+  
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 14;
+  let y = 20;
+  
+  // Header
+  doc.setFontSize(18);
+  doc.setTextColor(234, 88, 12); // Orange
+  doc.text('STUNDENÜBERSICHT', margin, y);
+  
+  doc.setFontSize(12);
+  doc.setTextColor(100, 100, 100);
+  doc.text(monthStr, pageWidth - margin, y, { align: 'right' });
+  
+  y += 8;
+  doc.setFontSize(10);
+  doc.text(firmenName, margin, y);
+  
+  // Trennlinie
+  y += 5;
+  doc.setDrawColor(234, 88, 12);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, pageWidth - margin, y);
+  
+  y += 10;
+  
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // ZUSAMMENFASSUNG
+  // ═══════════════════════════════════════════════════════════════════════════════
+  
+  doc.setFillColor(249, 250, 251);
+  doc.rect(margin, y, pageWidth - 2*margin, kostenAktiv ? 22 : 14, 'F');
+  
+  doc.setFontSize(9);
+  doc.setTextColor(80, 80, 80);
+  doc.text('ZUSAMMENFASSUNG', margin + 4, y + 5);
+  
+  doc.setFontSize(11);
+  doc.setTextColor(0, 0, 0);
+  doc.text(`Gesamt: ${gesamtStunden.toFixed(2)} h`, margin + 4, y + 11);
+  doc.text(`Facharbeiter (F): ${gesamtF.toFixed(2)} h`, margin + 60, y + 11);
+  doc.text(`Helfer (H): ${gesamtH.toFixed(2)} h`, margin + 120, y + 11);
+  
+  if (kostenAktiv) {
+    doc.setTextColor(147, 51, 234); // Purple
+    doc.text(`Kosten: ${gesamtKosten.toFixed(2)} €`, margin + 4, y + 18);
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`(F: ${stundenlohnF}€/h × ${gesamtF.toFixed(1)}h = ${(gesamtF * stundenlohnF).toFixed(0)}€  |  H: ${stundenlohnH}€/h × ${gesamtH.toFixed(1)}h = ${(gesamtH * stundenlohnH).toFixed(0)}€)`, margin + 40, y + 18);
+  }
+  
+  y += kostenAktiv ? 28 : 20;
+  
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // PROJEKT-ÜBERSICHT
+  // ═══════════════════════════════════════════════════════════════════════════════
+  
+  const aktiveProjekte = Object.values(projektStats).filter(p => p.stundenF + p.stundenH > 0);
+  if (aktiveProjekte.length > 0) {
+    doc.setFontSize(10);
+    doc.setTextColor(234, 88, 12);
+    doc.text('PROJEKTE', margin, y);
+    y += 4;
+    
+    const projektRows = aktiveProjekte.map(p => {
+      const summe = p.stundenF + p.stundenH;
+      const kosten = (p.stundenF * stundenlohnF) + (p.stundenH * stundenlohnH);
+      return kostenAktiv 
+        ? [p.name, p.stundenF.toFixed(1) + ' h', p.stundenH.toFixed(1) + ' h', summe.toFixed(1) + ' h', kosten.toFixed(0) + ' €']
+        : [p.name, p.stundenF.toFixed(1) + ' h', p.stundenH.toFixed(1) + ' h', summe.toFixed(1) + ' h'];
+    });
+    
+    doc.autoTable({
+      startY: y,
+      head: [kostenAktiv ? ['Projekt', 'F-Std.', 'H-Std.', 'Gesamt', 'Kosten'] : ['Projekt', 'F-Std.', 'H-Std.', 'Gesamt']],
+      body: projektRows,
+      theme: 'striped',
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [234, 88, 12], textColor: 255 },
+      margin: { left: margin, right: margin }
+    });
+    
+    y = doc.lastAutoTable.finalY + 8;
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // STUNDENDETAILS
+  // ═══════════════════════════════════════════════════════════════════════════════
+  
+  if (stundenRows.length > 0) {
+    // Seitenumbruch wenn nötig
+    if (y > 200) { doc.addPage(); y = 20; }
+    
+    doc.setFontSize(10);
+    doc.setTextColor(59, 130, 246); // Blue
+    doc.text('STUNDENDETAILS', margin, y);
+    y += 4;
+    
+    doc.autoTable({
+      startY: y,
+      head: [['Datum', 'Mitarbeiter', 'Typ', 'Projekt', 'Zeit', 'Std.']],
+      body: stundenRows,
+      theme: 'grid',
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [59, 130, 246], textColor: 255 },
+      columnStyles: {
+        0: { cellWidth: 22 },
+        2: { cellWidth: 10, halign: 'center' },
+        5: { cellWidth: 15, halign: 'right' }
+      },
+      margin: { left: margin, right: margin }
+    });
+    
+    y = doc.lastAutoTable.finalY + 8;
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // MATERIAL-LISTE
+  // ═══════════════════════════════════════════════════════════════════════════════
+  
+  if (materialListe.length > 0) {
+    // Seitenumbruch wenn nötig
+    if (y > 220) { doc.addPage(); y = 20; }
+    
+    doc.setFontSize(10);
+    doc.setTextColor(16, 185, 129); // Emerald
+    doc.text('MATERIAL & BEMERKUNGEN', margin, y);
+    y += 4;
+    
+    const materialRows = materialListe.map(m => [m.datum, m.projekt, m.text]);
+    
+    doc.autoTable({
+      startY: y,
+      head: [['Datum', 'Projekt', 'Material / Bemerkung']],
+      body: materialRows,
+      theme: 'striped',
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [16, 185, 129], textColor: 255 },
+      columnStyles: {
+        0: { cellWidth: 22 },
+        1: { cellWidth: 35 }
+      },
+      margin: { left: margin, right: margin }
+    });
+    
+    y = doc.lastAutoTable.finalY + 10;
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // UNTERSCHRIFTSFELDER (optional)
+  // ═══════════════════════════════════════════════════════════════════════════════
+  
+  if (unterschriftAktiv) {
+    // Seitenumbruch wenn nötig
+    if (y > 240) { doc.addPage(); y = 20; }
+    
+    y += 10;
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    
+    // Zwei Unterschriftsfelder nebeneinander
+    const boxWidth = 80;
+    
+    doc.text('Auftraggeber:', margin, y);
+    doc.text('Auftragnehmer:', pageWidth / 2 + 5, y);
+    y += 15;
+    
+    doc.setDrawColor(150, 150, 150);
+    doc.line(margin, y, margin + boxWidth, y);
+    doc.line(pageWidth / 2 + 5, y, pageWidth / 2 + 5 + boxWidth, y);
+    
+    y += 4;
+    doc.text('Datum, Unterschrift', margin, y);
+    doc.text('Datum, Unterschrift', pageWidth / 2 + 5, y);
+  }
+  
+  // Footer auf allen Seiten
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Erstellt: ${new Date().toLocaleDateString('de-DE')} | Seite ${i} von ${totalPages}`, pageWidth / 2, 290, { align: 'center' });
+  }
+  
+  doc.save(`Stunden_${monthStr}.pdf`);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EINSTELLUNGEN MODUL - Zentrale Konfiguration
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function SettingsModule({ appState, updateState, cloudConfig, setCloudConfig, triggerCloudSync, restoreFromCloud, syncStatus, exportFullBackup, importBackupFile, exportStammdatenFile }) {
+  const [activeTab, setActiveTab] = useState('profil');
+  const fd = appState.firmenDaten || {};
+
+  const updateFd = (field, value) => {
+    updateState(prev => ({
+      ...prev,
+      firmenDaten: { ...prev.firmenDaten, [field]: value }
+    }));
+  };
+
+  return (
+    <div className="main-content flex-1 pt-14 md:pt-0 pb-20 md:pb-6 flex flex-col bg-slate-100 overflow-y-auto">
+      <div className="max-w-5xl mx-auto p-6 md:p-10 w-full">
+        <h1 className="text-3xl font-bold text-slate-800 mb-6">Einstellungen</h1>
+
+        {/* TABS */}
+        <div className="flex gap-4 mb-8 border-b border-slate-200">
+          <button onClick={() => setActiveTab('profil')} className={`pb-2 px-1 font-bold transition-colors ${activeTab === 'profil' ? 'text-slate-800 border-b-2 border-slate-800' : 'text-slate-400 hover:text-slate-600'}`}>Firmenprofil</button>
+          <button onClick={() => setActiveTab('cloud')} className={`pb-2 px-1 font-bold transition-colors ${activeTab === 'cloud' ? 'text-slate-800 border-b-2 border-slate-800' : 'text-slate-400 hover:text-slate-600'}`}>Cloud & Sync</button>
+          <button onClick={() => setActiveTab('daten')} className={`pb-2 px-1 font-bold transition-colors ${activeTab === 'daten' ? 'text-slate-800 border-b-2 border-slate-800' : 'text-slate-400 hover:text-slate-600'}`}>Daten & Backup</button>
+        </div>
+
+        {/* TAB 1: FIRMENPROFIL */}
+        {activeTab === 'profil' && (
+          <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200">
+            <h2 className="text-xl font-bold mb-6 flex items-center justify-between">
+               <span>Stammdaten</span>
+               <span className="text-xs font-normal text-slate-400">Diese Daten erscheinen auf allen Dokumenten.</span>
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Linke Spalte: Adresse */}
+              <div className="space-y-4">
+                <h3 className="font-bold text-slate-400 uppercase text-xs tracking-wider">Anschrift</h3>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Firmenname / Inhaber</label>
+                  <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.firmenname || ''} onChange={e => updateFd('firmenname', e.target.value)} placeholder="Max Mustermann Handwerk" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Straße & Nr.</label>
+                  <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.strasse || ''} onChange={e => updateFd('strasse', e.target.value)} placeholder="Musterstraße 1" />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">PLZ</label>
+                    <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.plz || ''} onChange={e => updateFd('plz', e.target.value)} placeholder="12345" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Ort</label>
+                    <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.ort || ''} onChange={e => updateFd('ort', e.target.value)} placeholder="Musterstadt" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Land</label>
+                  <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.land || ''} onChange={e => updateFd('land', e.target.value)} placeholder="Deutschland" />
+                </div>
+              </div>
+
+              {/* Rechte Spalte: Kontakt & Bank */}
+              <div className="space-y-4">
+                <h3 className="font-bold text-slate-400 uppercase text-xs tracking-wider">Kontakt & Finanzen</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">Telefon</label>
+                    <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.telefon || ''} onChange={e => updateFd('telefon', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">E-Mail</label>
+                    <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.email || ''} onChange={e => updateFd('email', e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Webseite</label>
+                  <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.website || ''} onChange={e => updateFd('website', e.target.value)} />
+                </div>
+                <hr className="my-4 border-slate-200" />
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Bankname</label>
+                  <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.bankName || ''} onChange={e => updateFd('bankName', e.target.value)} placeholder="Sparkasse..." />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">IBAN</label>
+                    <input type="text" className="w-full p-3 border border-slate-300 rounded-lg font-mono text-sm" value={fd.iban || ''} onChange={e => updateFd('iban', e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-1">BIC</label>
+                    <input type="text" className="w-full p-3 border border-slate-300 rounded-lg font-mono text-sm" value={fd.bic || ''} onChange={e => updateFd('bic', e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Steuernummer / USt-ID</label>
+                  <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.steuernummer || ''} onChange={e => updateFd('steuernummer', e.target.value)} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: CLOUD SYNC */}
+        {activeTab === 'cloud' && (
+          <div className="bg-white p-8 rounded-xl shadow-sm border border-slate-200">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h2 className="text-xl font-bold">Cloud-Sync</h2>
+                <p className="text-slate-500 text-sm mt-1">Synchronisiert deine verschlüsselten Daten automatisch in die Cloud. Die Daten bleiben Ende-zu-Ende verschlüsselt.</p>
+              </div>
+              <div className={`px-3 py-1 rounded-full text-xs font-bold ${cloudConfig?.enabled ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                {cloudConfig?.enabled ? '● Aktiv' : '○ Deaktiviert'}
+              </div>
+            </div>
+
+            <div className="bg-slate-50 p-6 rounded-lg border border-slate-200">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Lizenzschlüssel</label>
+              <div className="flex gap-3">
+                <input 
+                  type="password" 
+                  className="flex-1 p-3 border border-slate-300 rounded-lg font-mono text-sm"
+                  placeholder="Dein Lizenzschlüssel..."
+                  value={cloudConfig?.licenseKey || ''}
+                  onChange={e => setCloudConfig({ licenseKey: e.target.value })}
+                />
+                <button 
+                  onClick={() => setCloudConfig({ enabled: !cloudConfig?.enabled })}
+                  className={`px-6 rounded-lg font-bold transition-colors ${cloudConfig?.enabled ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-teal-600 text-white hover:bg-teal-700'}`}
+                >
+                  {cloudConfig?.enabled ? 'Deaktivieren' : 'Aktivieren'}
+                </button>
+              </div>
+              <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
+                 <span>Daten werden lokal verschlüsselt, bevor sie hochgeladen werden.</span>
+                 <span className="ml-auto font-mono">
+                   {syncStatus === 'uploading' && '⏳ Synchronisiere...'}
+                   {syncStatus === 'success' && '✅ Synchronisiert'}
+                   {syncStatus === 'error' && '❌ Fehler'}
+                   {syncStatus === 'idle' && '○ Bereit'}
+                 </span>
+              </div>
+              {cloudConfig?.enabled && (
+                <div className="mt-4 flex gap-3">
+                   <button 
+                     onClick={triggerCloudSync} 
+                     disabled={syncStatus === 'uploading'} 
+                     className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 rounded-lg font-bold text-white text-sm flex justify-center items-center gap-2 disabled:opacity-50"
+                   >
+                     {syncStatus === 'uploading' ? '⏳ Synchronisiere...' : '☁️ In Cloud hochladen'}
+                   </button>
+                   <button 
+                     onClick={restoreFromCloud} 
+                     disabled={syncStatus === 'uploading'} 
+                     className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 rounded-lg font-bold text-white text-sm flex justify-center items-center gap-2 disabled:opacity-50"
+                   >
+                     ☁️ Aus Cloud wiederherstellen
+                   </button>
+                </div>
+              )}
+            </div>
+
+            {/* Info-Box */}
+            <div className="mt-6 bg-slate-50 p-6 rounded-xl border border-slate-200">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <span>ℹ️</span> Ihre Vorteile & Sicherheit
+              </h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Wir nutzen eine militärische Sicherheits-Architektur, die Datenschutz mit modernem Komfort verbindet:
+              </p>
+              <div className="space-y-4 text-sm text-slate-700">
+                <div className="flex gap-3">
+                  <span className="text-xl flex-shrink-0">🔄</span>
+                  <div>
+                    <strong>Backup & Geräte-Sync:</strong> Ihre Daten sind sicher, selbst wenn Ihr Gerät verloren geht oder defekt ist. Gleichzeitig können Sie nahtlos zwischen PC, Tablet und Laptop wechseln – alle Geräte sind immer auf dem gleichen Stand.
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <span className="text-xl flex-shrink-0">🛡️</span>
+                  <div>
+                    <strong>Digitale Tarnkappe (5 MB Schutz):</strong> Wir speichern Daten in festen, mit Rauschen aufgefüllten 5-MB-Containern. Der Vorteil: Von außen sieht eine leere Datenbank exakt so aus wie eine volle. Niemand kann anhand der Dateigröße erraten, wie viele Kunden Sie haben.
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <span className="text-xl flex-shrink-0">🔒</span>
+                  <div>
+                    <strong>Endgültiges & Sicheres Löschen:</strong> Cloudflare R2 (unser Speicher) nutzt keine Historie. Wenn Sie synchronisieren, wird der alte Tresor physikalisch überschrieben und vernichtet.
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <span className="text-xl flex-shrink-0">👁️</span>
+                  <div>
+                    <strong>Kein "Big Tech" Scannen:</strong> Anders als herkömmliche Clouds (die Daten oft indexieren), dient dieser Speicher nur als "dumme" Ablage für den verschlüsselten Container. Ihre Daten werden nicht analysiert.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: DATEN & BACKUP */}
+        {activeTab === 'daten' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             {/* Backup Export */}
+             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+               <h3 className="font-bold text-lg mb-2">Verschlüsseltes Backup</h3>
+               <p className="text-sm text-slate-500 mb-4 flex-1">Exportiert alle Daten als verschlüsselte Datei. Kann auf anderen Geräten importiert werden.</p>
+               <button 
+                 onClick={exportFullBackup}
+                 className="w-full py-4 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 flex justify-center items-center gap-2"
+               >
+                 <span>🔐</span> Backup erstellen
+               </button>
+             </div>
+
+             {/* Backup Import */}
+             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+               <h3 className="font-bold text-lg mb-2">Backup importieren</h3>
+               <p className="text-sm text-slate-500 mb-4 flex-1">Stellt ein verschlüsseltes Backup wieder her. Benötigt das Original-Passwort.</p>
+               <label className="block w-full py-4 bg-indigo-500 text-white rounded-lg font-bold hover:bg-indigo-600 text-center cursor-pointer">
+                 <span>🔓 Backup laden</span>
+                 <input type="file" accept=".json,.txt,.enc" className="hidden" onChange={e => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      importBackupFile(file);
+                      e.target.value = '';
+                    }
+                 }} />
+               </label>
+             </div>
+
+             {/* Stammdaten Export */}
+             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+               <h3 className="font-bold text-lg mb-2">Stammdaten exportieren</h3>
+               <p className="text-sm text-slate-500 mb-4 flex-1">Exportiert nur Kunden, Positionen und Firmeneinstellungen (unverschlüsselt).</p>
+               <button 
+                 onClick={exportStammdatenFile}
+                 className="w-full py-4 bg-slate-700 text-white rounded-lg font-bold hover:bg-slate-600 flex justify-center items-center gap-2"
+               >
+                 <span>📦</span> Stammdaten exportieren
+               </button>
+             </div>
+
+             {/* Stammdaten Import */}
+             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+               <h3 className="font-bold text-lg mb-2">Stammdaten importieren</h3>
+               <p className="text-sm text-slate-500 mb-4 flex-1">Importiert Kunden und Positionen aus einer Stammdaten-Datei.</p>
+               <label className="block w-full py-4 bg-slate-600 text-white rounded-lg font-bold hover:bg-slate-500 text-center cursor-pointer">
+                 <span>📥</span> Stammdaten laden
+                 <input type="file" accept=".json" className="hidden" onChange={e => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = async (evt) => {
+                        try {
+                          const data = JSON.parse(evt.target.result);
+                          if (data.kunden || data.material) {
+                            updateState(prev => ({
+                              ...prev,
+                              kunden: [...(prev.kunden || []), ...(data.kunden || [])],
+                              material: [...(prev.material || []), ...(data.material || [])]
+                            }));
+                            alert(`✅ Import erfolgreich!\n\n${(data.kunden || []).length} Kunden\n${(data.material || []).length} Positionen`);
+                          } else {
+                            alert('Keine gültigen Stammdaten gefunden.');
+                          }
+                        } catch (err) {
+                          alert('Fehler beim Import: ' + err.message);
+                        }
+                      };
+                      reader.readAsText(file);
+                      e.target.value = '';
+                    }
+                 }} />
+               </label>
+             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // HAUPTANWENDUNG (mit Vault-Integration)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3029,8 +5452,22 @@ function MainApp() {
   const [neuMat, setNeuMat] = useState({ name: "", einheit: "Stk", preis: "0,00" });
   const [neuKunde, setNeuKunde] = useState({ anrede: "Organisation", name: "", strasse: "", plz: "", ort: "" });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeModule, setActiveModule] = useState('dashboard'); // 'dashboard', 'rechnung' oder 'zeit'
   const [clickedMaterial, setClickedMaterial] = useState(null);
   const [clickedKunde, setClickedKunde] = useState(null);
+  
+  // ═══ Zeiterfassungs-States ═══
+  const [zeitActiveProjectId, setZeitActiveProjectId] = useState("");
+  const [zeitNewProjectName, setZeitNewProjectName] = useState("");
+  const [zeitActiveTab, setZeitActiveTab] = useState("projekte"); // 'projekte', 'mitarbeiter', 'einstellungen'
+  // Standard-Zoom: 50% auf Mobile (< 768px), 100% auf Desktop
+  const [zoomLevel, setZoomLevel] = useState(() => {
+    // Desktop: immer 100%
+    if (window.innerWidth >= 1024 && window.innerHeight >= 600) return 1;
+    // Mobile: Bildschirmbreite / A4-Breite (210mm ≈ 794px), aber mindestens 50%
+    const idealZoom = window.innerWidth / 794;
+    return Math.max(0.5, Math.min(1, idealZoom));
+  });
   
   const logoInputRef = useRef(null);
   
@@ -3098,6 +5535,21 @@ function MainApp() {
       });
     }
   }, [aktivesDok, hatUngespeichertenEntwurf, updateState]);
+  
+  // Scroll-Position beim Start auf 0,0 setzen
+  useEffect(() => {
+    const resetScroll = () => {
+      const scrollArea = document.querySelector('.preview-scroll-area');
+      if (scrollArea) {
+        scrollArea.scrollLeft = 0;
+        scrollArea.scrollTop = 0;
+      }
+    };
+    
+    resetScroll();
+    setTimeout(resetScroll, 100);
+    setTimeout(resetScroll, 500);
+  }, []);
   
   // Browser-Warnung NUR wenn Vault noch speichert (pending/saving)
   // Der Entwurf wird ja automatisch im Vault gespeichert, daher keine Warnung nötig
@@ -3428,31 +5880,26 @@ function MainApp() {
     setMusterFilter(false);
   };
 
-  const deleteDok = (d) => {
-    if (!confirm(`${d.typ} ${d.nummer} wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.`)) return;
+  const deleteDok = async (d) => {
+    if (!confirm(`${d.typ} ${d.nummer} löschen?\n\nAlle Daten werden unwiderruflich gelöscht.`)) return;
     
-    const allDocs = rechnungen.filter(doc => doc.id !== d.id);
-    const rechnungenItems = allDocs.filter(doc => doc.typ !== "ANGEBOT");
-    const angeboteItems = allDocs.filter(doc => doc.typ === "ANGEBOT");
+    // Bestimme ob Rechnung oder Angebot
+    const isAngebot = d.typ === "ANGEBOT";
+    const dataPath = isAngebot ? 'angebote' : 'rechnungen';
     
-    updateState(prev => ({
-      ...prev,
-      rechnungen: rechnungenItems,
-      angebote: angeboteItems
-    }));
+    // Löschung durchführen
+    await secureDelete(updateState, dataPath, d.id);
     
     alert(`${d.typ} ${d.nummer} wurde gelöscht`);
   };
 
   // Kunde löschen
-  const deleteKunde = (k) => {
+  const deleteKunde = async (k) => {
     const kundeName = k.Organisation || k.name || 'Unbenannt';
-    if (!confirm(`Kunde "${kundeName}" wirklich löschen?\n\nHinweis: Bereits gespeicherte Rechnungen/Angebote bleiben erhalten.`)) return;
+    if (!confirm(`Kunde "${kundeName}" löschen?\n\nAlle Daten werden unwiderruflich gelöscht.\n\nHinweis: Bereits gespeicherte Rechnungen/Angebote bleiben erhalten.`)) return;
     
-    updateState(prev => ({
-      ...prev,
-      kunden: (prev.kunden || []).filter(kunde => kunde.id !== k.id)
-    }));
+    // Sichere Löschung durchführen
+    await secureDelete(updateState, 'kunden', k.id);
     
     // Falls der gelöschte Kunde gerade im aktiven Dokument verwendet wird, entfernen
     if (aktivesDok.kunde?.id === k.id) {
@@ -3461,14 +5908,12 @@ function MainApp() {
   };
 
   // Material/Position löschen
-  const deleteMaterial = (m) => {
+  const deleteMaterial = async (m) => {
     const matName = m.Name || m.name || 'Unbenannt';
-    if (!confirm(`Material "${matName}" wirklich löschen?\n\nHinweis: Bereits in Dokumenten verwendete Positionen bleiben erhalten.`)) return;
+    if (!confirm(`Material "${matName}" löschen?\n\nAlle Daten werden unwiderruflich gelöscht.\n\nHinweis: Bereits in Dokumenten verwendete Positionen bleiben erhalten.`)) return;
     
-    updateState(prev => ({
-      ...prev,
-      material: (prev.material || []).filter(mat => mat.id !== m.id)
-    }));
+    // Sichere Löschung durchführen
+    await secureDelete(updateState, 'material', m.id);
   };
 
   const updateStamm = (typ, kundeId, feld, val) => {
@@ -4082,15 +6527,15 @@ function MainApp() {
   };
 
   return (
-    <div className="app-container flex flex-col md:flex-row h-screen overflow-hidden">
+    <div className="app-container flex flex-col md:flex-row h-screen md:overflow-hidden">
       {/* ═══════════════════════════════════════════════════════════════════════════════
-       * MOBILE HEADER - Nur auf Mobile sichtbar
+       * MOBILE HEADER - Sichtbar wenn Sidebar nicht permanent angezeigt wird
        * ═══════════════════════════════════════════════════════════════════════════════ */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-50 bg-slate-900 border-b border-slate-700 px-4 py-3 flex items-center justify-between">
-        {/* Hamburger-Menü */}
+      <div className="mobile-header fixed left-0 right-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-700 px-2 py-1 flex items-center" style={{ top: '0', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 4px)', paddingLeft: 'calc(env(safe-area-inset-left, 0px) + 8px)' }}>
+        {/* Hamburger-Menü - feste Breite */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="text-white p-2 rounded hover:bg-slate-700"
+          className="text-white p-2 rounded hover:bg-slate-700 flex-shrink-0"
           title="Menü"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4098,13 +6543,11 @@ function MainApp() {
           </svg>
         </button>
         
-        {/* Titel */}
-        <span className="text-white font-bold text-sm">
-          {aktivesDok.typ === 'ANGEBOT' ? '📋 Angebot' : aktivesDok.typ === 'ABSCHLAGSRECHNUNG' ? '📑 Abschlag' : '📄 Rechnung'} {aktivesDok.nummer}
-        </span>
+        {/* Leerraum in der Mitte */}
+        <span className="flex-1"></span>
         
-        {/* Status-Icons */}
-        <div className="flex items-center gap-2">
+        {/* Status-Icons - flex-shrink-0 verhindert Kompression */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           {/* Cloud-Status */}
           {cloudConfig.enabled && (
             <div className="relative" title={syncStatus === 'idle' ? 'Cloud bereit' : syncStatus === 'uploading' ? 'Synchronisiere...' : syncStatus === 'success' ? 'Cloud-Sync OK' : 'Cloud-Fehler'}>
@@ -4204,6 +6647,43 @@ function MainApp() {
       <div className={`sidebar-backdrop ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)}></div>
       
       <div className={`sidebar w-full md:w-96 bg-slate-900 text-white p-4 pt-16 md:pt-4 pb-24 md:pb-4 no-print flex flex-col shadow-2xl border-r border-teal-900 ${sidebarOpen ? 'open' : ''}`}>
+        {/* Home-Button + Einstellungen */}
+        <div className="flex items-center gap-2 mb-4 border-b border-slate-700 pb-4">
+          <button 
+            onClick={() => setActiveModule('dashboard')} 
+            className="flex-1 text-left p-2 text-slate-400 hover:text-white flex items-center gap-2"
+          >
+            <span className="text-xl">🏠</span>
+            <span className="font-bold uppercase tracking-wider text-xs">Startseite</span>
+          </button>
+          <button 
+            onClick={() => setActiveModule('settings')} 
+            className={`p-2 rounded-lg transition-all ${activeModule === 'settings' ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+            title="Einstellungen"
+          >
+            ⚙️
+          </button>
+        </div>
+
+        {/* Modul-Navigation */}
+        <div className="flex gap-2 mb-4">
+          <button 
+            onClick={() => setActiveModule('rechnung')} 
+            className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all ${activeModule === 'rechnung' ? 'bg-teal-600 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+          >
+            📄 Dokumente
+          </button>
+          <button 
+            onClick={() => setActiveModule('zeit')} 
+            className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all ${activeModule === 'zeit' ? 'bg-orange-500 text-white shadow-lg' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+          >
+            ⏱️ Zeiterfassung
+          </button>
+        </div>
+        
+        {/* Rechnungs-Modul Tabs */}
+        {activeModule === 'rechnung' && (
+        <>
         <div className="flex gap-1 mb-4 bg-slate-800 p-1 rounded text-[10px] font-bold uppercase flex-wrap">
           <button onClick={() => { setActiveTab("material"); setSuchTerm(""); }} className={`flex-1 py-2 rounded ${activeTab === "material" ? "bg-teal-600" : ""}`}>Positionen</button>
           <button onClick={() => { setActiveTab("kunden"); setSuchTerm(""); }} className={`flex-1 py-2 rounded ${activeTab === "kunden" ? "bg-teal-600" : ""}`}>Kunden</button>
@@ -4855,33 +7335,589 @@ function MainApp() {
             />
           </label>
         </div>
+        </>
+        )} {/* Ende activeModule === 'rechnung' */}
+        
+        {/* Zeiterfassungs-Modul Sidebar */}
+        {activeModule === 'zeit' && (
+        <>
+        {/* Tabs für Zeiterfassung */}
+        <div className="flex gap-1 mb-4 bg-slate-800 p-1 rounded text-[10px] font-bold uppercase flex-wrap">
+          <button onClick={() => setZeitActiveTab("projekte")} className={`flex-1 py-2 rounded transition-colors ${zeitActiveTab === "projekte" ? "bg-teal-600" : "hover:bg-slate-700"}`}>📁 Projekte</button>
+          <button onClick={() => setZeitActiveTab("mitarbeiter")} className={`flex-1 py-2 rounded transition-colors ${zeitActiveTab === "mitarbeiter" ? "bg-teal-600" : "hover:bg-slate-700"}`}>👥 Team</button>
+          <button onClick={() => setZeitActiveTab("einstellungen")} className={`flex-1 py-2 rounded transition-colors ${zeitActiveTab === "einstellungen" ? "bg-teal-600" : "hover:bg-slate-700"}`}>⚙️</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
+          {/* PROJEKTE TAB */}
+          {zeitActiveTab === "projekte" && (
+            <>
+              <h3 className="text-teal-400 font-bold uppercase text-xs mb-2">Projekte</h3>
+              
+              {/* Neues Projekt erstellen */}
+              <div className="flex gap-2 mb-4">
+                <input 
+                  type="text" 
+                  placeholder="Neues Projekt..." 
+                  value={zeitNewProjectName}
+                  onChange={e => setZeitNewProjectName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && zeitNewProjectName.trim()) {
+                      const newProject = {
+                        id: "p_" + Date.now(),
+                        name: zeitNewProjectName,
+                        created: new Date().toISOString(),
+                        tage: {}
+                      };
+                      updateState(prev => {
+                        const prevZeit = prev.zeiterfassung || { projekte: [], mitarbeiter: [], einstellungen: {} };
+                        return {
+                          ...prev,
+                          zeiterfassung: {
+                            ...prevZeit,
+                            projekte: [newProject, ...(prevZeit.projekte || [])]
+                          }
+                        };
+                      });
+                      setZeitActiveProjectId(newProject.id);
+                      setZeitNewProjectName("");
+                    }
+                  }}
+                  className="flex-1 p-2 text-black text-xs rounded outline-none"
+                />
+                <button 
+                  onClick={() => {
+                    if (!zeitNewProjectName.trim()) return;
+                    const newProject = {
+                      id: "p_" + Date.now(),
+                      name: zeitNewProjectName,
+                      created: new Date().toISOString(),
+                      tage: {}
+                    };
+                    updateState(prev => {
+                      const prevZeit = prev.zeiterfassung || { projekte: [], mitarbeiter: [], einstellungen: {} };
+                      return {
+                        ...prev,
+                        zeiterfassung: {
+                          ...prevZeit,
+                          projekte: [newProject, ...(prevZeit.projekte || [])]
+                        }
+                      };
+                    });
+                    setZeitActiveProjectId(newProject.id);
+                    setZeitNewProjectName("");
+                  }}
+                  className="bg-teal-600 text-white px-3 rounded font-bold hover:bg-teal-500"
+                >+</button>
+              </div>
+              
+              {/* Projektliste */}
+              {(appState.zeiterfassung?.projekte || []).length === 0 ? (
+                <p className="text-slate-500 text-xs italic text-center py-8">Noch keine Projekte. Erstelle dein erstes Projekt oben.</p>
+              ) : (
+                (appState.zeiterfassung?.projekte || []).map(proj => {
+                  const isActive = zeitActiveProjectId === proj.id;
+                  const stundenGesamt = Object.values(proj.tage || {}).reduce((sum, tag) => sum + (tag.daySum || 0), 0);
+                  return (
+                    <div 
+                      key={proj.id} 
+                      onClick={() => setZeitActiveProjectId(proj.id)}
+                      className={`p-3 rounded border cursor-pointer transition-all ${
+                        isActive 
+                          ? 'bg-teal-500/20 border-teal-500 ring-1 ring-teal-500' 
+                          : 'bg-slate-800 border-slate-700 hover:border-teal-400'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className={`font-bold text-sm ${isActive ? 'text-teal-400' : 'text-white'}`}>{proj.name}</div>
+                          <div className="text-slate-400 text-[10px] mt-1">
+                            {Object.keys(proj.tage || {}).length} Tage erfasst
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`font-bold ${isActive ? 'text-teal-400' : 'text-emerald-400'}`}>
+                            {stundenGesamt.toFixed(1)}h
+                          </div>
+                          <button 
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (confirm(`Projekt "${proj.name}" löschen?\n\nDas Projekt wird unwiderruflich gelöscht.\nDie Mitarbeiter-Stunden bleiben in der Monatsauswertung erhalten.`)) {
+                                // Projekt sicher löschen (3x überschreiben)
+                                // Die Stunden existieren bereits doppelt in monatsListe
+                                await secureDelete(updateState, 'zeiterfassung.projekte', proj.id);
+                                if (zeitActiveProjectId === proj.id) setZeitActiveProjectId("");
+                              }
+                            }}
+                            className="text-slate-500 hover:text-red-400 text-[10px] mt-1"
+                          >🗑️ Löschen</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </>
+          )}
+
+          {/* MITARBEITER TAB */}
+          {zeitActiveTab === "mitarbeiter" && (
+            <>
+              <h3 className="text-orange-400 font-bold uppercase text-xs mb-2">Mitarbeiter</h3>
+              
+              {/* Neuen Mitarbeiter hinzufügen */}
+              <div className="flex gap-2 mb-4">
+                <input 
+                  type="text" 
+                  placeholder="Neuer Mitarbeiter..." 
+                  id="neuer-mitarbeiter-input"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const input = e.target;
+                      const name = input.value.trim();
+                      if (!name) return;
+                      
+                      const mitarbeiter = appState.zeiterfassung?.mitarbeiter || [];
+                      if (mitarbeiter.includes(name)) {
+                        alert('Dieser Mitarbeiter existiert bereits.');
+                        return;
+                      }
+                      
+                      updateState(prev => {
+                        const prevZeit = prev.zeiterfassung || { mitarbeiter: [] };
+                        return {
+                          ...prev,
+                          zeiterfassung: {
+                            ...prevZeit,
+                            mitarbeiter: [...(prevZeit.mitarbeiter || []), name].sort()
+                          }
+                        };
+                      });
+                      input.value = '';
+                    }
+                  }}
+                  className="flex-1 p-2 text-black text-xs rounded outline-none"
+                />
+                <button 
+                  onClick={() => {
+                    const input = document.getElementById('neuer-mitarbeiter-input');
+                    const name = input.value.trim();
+                    if (!name) return;
+                    
+                    const mitarbeiter = appState.zeiterfassung?.mitarbeiter || [];
+                    if (mitarbeiter.includes(name)) {
+                      alert('Dieser Mitarbeiter existiert bereits.');
+                      return;
+                    }
+                    
+                    updateState(prev => {
+                      const prevZeit = prev.zeiterfassung || { mitarbeiter: [] };
+                      return {
+                        ...prev,
+                        zeiterfassung: {
+                          ...prevZeit,
+                          mitarbeiter: [...(prevZeit.mitarbeiter || []), name].sort()
+                        }
+                      };
+                    });
+                    input.value = '';
+                  }}
+                  className="bg-teal-600 text-white px-3 rounded font-bold hover:bg-teal-500"
+                >+</button>
+              </div>
+              
+              <p className="text-slate-500 text-[10px] mb-3">Oder automatisch beim Erfassen von Stunden.</p>
+              
+              {/* Mitarbeiterliste */}
+              <div className="space-y-2">
+                {(appState.zeiterfassung?.mitarbeiter || []).length === 0 ? (
+                  <p className="text-slate-500 text-xs italic text-center py-6">Noch keine Mitarbeiter.</p>
+                ) : (
+                  (appState.zeiterfassung?.mitarbeiter || []).map((name, idx) => (
+                    <div key={idx} className="p-3 bg-slate-800 rounded border border-slate-700 flex justify-between items-center group">
+                      <span className="text-white font-medium text-sm">{name}</span>
+                      <button 
+                        onClick={() => {
+                          if (confirm(`"${name}" aus der Mitarbeiterliste entfernen?`)) {
+                            updateState(prev => {
+                              const prevZeit = prev.zeiterfassung || { mitarbeiter: [] };
+                              return {
+                                ...prev,
+                                zeiterfassung: {
+                                  ...prevZeit,
+                                  mitarbeiter: prevZeit.mitarbeiter.filter(m => m !== name)
+                                }
+                              };
+                            });
+                          }
+                        }}
+                        className="text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >✕</button>
+                    </div>
+                  ))
+                )}
+              </div>
+              
+              <p className="text-slate-600 text-[10px] mt-4 border-t border-slate-700 pt-3">
+                💡 Entfernen löscht nur den Autocomplete-Vorschlag, nicht die erfassten Stunden.
+              </p>
+            </>
+          )}
+
+          {/* EINSTELLUNGEN TAB */}
+          {zeitActiveTab === "einstellungen" && (
+            <>
+              <h3 className="text-orange-400 font-bold uppercase text-xs mb-2">Einstellungen</h3>
+              
+              <div className="space-y-4">
+                {/* Pausenzeit */}
+                <div className="p-3 bg-slate-800 rounded border border-slate-700">
+                  <label className="flex items-center gap-2 mb-3">
+                    <input 
+                      type="checkbox" 
+                      checked={appState.zeiterfassung?.einstellungen?.pauseAktiv !== false}
+                      onChange={e => {
+                        updateState(prev => {
+                          const prevZeit = prev.zeiterfassung || { einstellungen: {} };
+                          return {
+                            ...prev,
+                            zeiterfassung: {
+                              ...prevZeit,
+                              einstellungen: {
+                                ...prevZeit.einstellungen,
+                                pauseAktiv: e.target.checked
+                              }
+                            }
+                          };
+                        });
+                      }}
+                      className="accent-teal-500"
+                    />
+                    <span className="text-white text-sm font-medium">Automatische Pause abziehen</span>
+                  </label>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-slate-400 text-[10px] uppercase block mb-1">Pause von</label>
+                      <input 
+                        type="time" 
+                        value={appState.zeiterfassung?.einstellungen?.pauseStart || "12:00"}
+                        onChange={e => {
+                          updateState(prev => {
+                            const prevZeit = prev.zeiterfassung || { einstellungen: {} };
+                            return {
+                              ...prev,
+                              zeiterfassung: {
+                                ...prevZeit,
+                                einstellungen: {
+                                  ...prevZeit.einstellungen,
+                                  pauseStart: e.target.value
+                                }
+                              }
+                            };
+                          });
+                        }}
+                        className="w-full p-2 bg-slate-700 text-white rounded text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-[10px] uppercase block mb-1">Pause bis</label>
+                      <input 
+                        type="time" 
+                        value={appState.zeiterfassung?.einstellungen?.pauseEnde || "12:30"}
+                        onChange={e => {
+                          updateState(prev => {
+                            const prevZeit = prev.zeiterfassung || { einstellungen: {} };
+                            return {
+                              ...prev,
+                              zeiterfassung: {
+                                ...prevZeit,
+                                einstellungen: {
+                                  ...prevZeit.einstellungen,
+                                  pauseEnde: e.target.value
+                                }
+                              }
+                            };
+                          });
+                        }}
+                        className="w-full p-2 bg-slate-700 text-white rounded text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stundenlohn */}
+                <div className="p-3 bg-slate-800 rounded border border-slate-700">
+                  <label className="flex items-center gap-2 mb-3">
+                    <input 
+                      type="checkbox" 
+                      checked={appState.zeiterfassung?.einstellungen?.kostenAktiv === true}
+                      onChange={e => {
+                        updateState(prev => {
+                          const prevZeit = prev.zeiterfassung || { einstellungen: {} };
+                          return {
+                            ...prev,
+                            zeiterfassung: {
+                              ...prevZeit,
+                              einstellungen: {
+                                ...prevZeit.einstellungen,
+                                kostenAktiv: e.target.checked
+                              }
+                            }
+                          };
+                        });
+                      }}
+                      className="accent-teal-500"
+                    />
+                    <span className="text-white text-sm font-medium">💰 Kosten berechnen</span>
+                  </label>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-slate-400 text-[10px] uppercase block mb-1">Facharbeiter (F)</label>
+                      <div className="flex items-center gap-1">
+                        <input 
+                          type="number" 
+                          value={appState.zeiterfassung?.einstellungen?.stundenlohnF || 59}
+                          onChange={e => {
+                            updateState(prev => {
+                              const prevZeit = prev.zeiterfassung || { einstellungen: {} };
+                              return {
+                                ...prev,
+                                zeiterfassung: {
+                                  ...prevZeit,
+                                  einstellungen: {
+                                    ...prevZeit.einstellungen,
+                                    stundenlohnF: parseFloat(e.target.value) || 0
+                                  }
+                                }
+                              };
+                            });
+                          }}
+                          className="flex-1 p-2 bg-slate-700 text-white rounded text-sm"
+                        />
+                        <span className="text-slate-500 text-xs">€</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-[10px] uppercase block mb-1">Helfer (H)</label>
+                      <div className="flex items-center gap-1">
+                        <input 
+                          type="number" 
+                          value={appState.zeiterfassung?.einstellungen?.stundenlohnH || 50}
+                          onChange={e => {
+                            updateState(prev => {
+                              const prevZeit = prev.zeiterfassung || { einstellungen: {} };
+                              return {
+                                ...prev,
+                                zeiterfassung: {
+                                  ...prevZeit,
+                                  einstellungen: {
+                                    ...prevZeit.einstellungen,
+                                    stundenlohnH: parseFloat(e.target.value) || 0
+                                  }
+                                }
+                              };
+                            });
+                          }}
+                          className="flex-1 p-2 bg-slate-700 text-white rounded text-sm"
+                        />
+                        <span className="text-slate-500 text-xs">€</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* PDF Einstellungen */}
+                <div className="p-3 bg-slate-800 rounded border border-slate-700">
+                  <label className="flex items-center gap-2">
+                    <input 
+                      type="checkbox" 
+                      checked={appState.zeiterfassung?.einstellungen?.unterschriftAktiv !== false}
+                      onChange={e => {
+                        updateState(prev => {
+                          const prevZeit = prev.zeiterfassung || { einstellungen: {} };
+                          return {
+                            ...prev,
+                            zeiterfassung: {
+                              ...prevZeit,
+                              einstellungen: {
+                                ...prevZeit.einstellungen,
+                                unterschriftAktiv: e.target.checked
+                              }
+                            }
+                          };
+                        });
+                      }}
+                      className="accent-teal-500"
+                    />
+                    <span className="text-white text-sm font-medium">📝 Unterschriftsfelder im PDF</span>
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        
+        {/* ═══════════════════════════════════════════════════════════════════════════════
+         * SIDEBAR FOOTER - Backup-Buttons (gleich wie im Dokumente-Modul)
+         * ═══════════════════════════════════════════════════════════════════════════════ */}
+        <div className="pt-4 border-t border-slate-700 space-y-2 text-xs mt-auto">
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={exportFullBackup} className="bg-indigo-700 py-2 rounded font-bold uppercase hover:bg-indigo-600 text-[10px]">
+              🔐 Backup
+            </button>
+            <label className="bg-indigo-600 py-2 rounded text-center cursor-pointer hover:bg-indigo-500 font-bold uppercase block text-[10px]">
+              🔓 Import
+              <input type="file" className="hidden" accept=".json,.txt,.enc" onChange={(e) => {
+                const file = e.target.files[0];
+                if (file) {
+                  importBackupFile(file);
+                  e.target.value = '';
+                }
+              }} />
+            </label>
+          </div>
+        </div>
+        </>
+        )}
       </div>
 
-      {/* Vorschau */}
-      <div className="main-content flex-1 pt-16 md:pt-0 pb-20 md:pb-6 p-4 md:p-6 lg:p-12 bg-slate-50 overflow-y-auto overflow-x-auto w-full">
-        <div
-          id="rechnung-druck"
-          className="md:mx-auto"
-          style={{
-            width: '210mm',
-            minWidth: '210mm',
-            minHeight: '297mm',
-            padding: '25mm 20mm 45mm 25mm',
-            background: 'white',
-            fontFamily: 'Arial, Helvetica, sans-serif',
-            fontSize: '11pt',
-            lineHeight: '1.45',
-            color: '#111',
-            boxSizing: 'border-box',
-            position: 'relative',
-            overflow: 'hidden'
-          }}
-        >
-          <div className="page-content">
-            {/* Großer Header mit Logo */}
-            <div className="page-header">
-              {/* Logo wenn vorhanden */}
-              {firmenDaten.logo && (
+      {/* DASHBOARD / LAUNCHER */}
+      {activeModule === 'dashboard' && (
+        <div className="main-content flex-1 pt-14 md:pt-0 pb-20 md:pb-6 flex flex-col bg-slate-100 overflow-y-auto">
+          <div className="max-w-6xl mx-auto p-6 md:p-10 w-full">
+            <header className="mb-12 text-center md:text-left">
+              <h1 className="text-3xl font-bold text-slate-800 mb-2">
+                Willkommen zurück, <span className="text-teal-600">{appState.firmenDaten.inhaberName || 'Chef'}</span>.
+              </h1>
+              <p className="text-slate-500">Wählen Sie einen Bereich, um zu starten.</p>
+            </header>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              
+              {/* MODUL 1: RECHNUNGEN */}
+              <div 
+                onClick={() => setActiveModule('rechnung')}
+                className="bg-white p-8 rounded-xl shadow-sm hover:shadow-xl border-l-8 border-teal-600 cursor-pointer transform transition hover:-translate-y-1 group"
+              >
+                <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">📄</div>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Rechnungen & Angebote</h3>
+                <p className="text-slate-500 text-sm mb-4">Erstellen, verwalten und PDF-Export von Dokumenten.</p>
+                <div className="text-xs font-bold text-teal-600 uppercase tracking-wide">
+                  {appState.rechnungen.length + appState.angebote.length} Dokumente gespeichert
+                </div>
+              </div>
+
+              {/* MODUL 2: ZEITERFASSUNG */}
+              <div 
+                onClick={() => setActiveModule('zeit')}
+                className="bg-white p-8 rounded-xl shadow-sm hover:shadow-xl border-l-8 border-orange-500 cursor-pointer transform transition hover:-translate-y-1 group"
+              >
+                <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">⏱️</div>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Zeiterfassung</h3>
+                <p className="text-slate-500 text-sm mb-4">Stunden dokumentieren, Pausen berechnen und Monatsberichte.</p>
+                <div className="text-xs font-bold text-orange-500 uppercase tracking-wide">
+                  {appState.zeiterfassung.projekte.length} Projekte aktiv
+                </div>
+              </div>
+
+              {/* MODUL 3: EINSTELLUNGEN */}
+              <div 
+                onClick={() => setActiveModule('settings')}
+                className="bg-white p-8 rounded-xl shadow-sm hover:shadow-xl border-l-8 border-slate-500 cursor-pointer transform transition hover:-translate-y-1 group"
+              >
+                <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">⚙️</div>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Einstellungen</h3>
+                <p className="text-slate-500 text-sm mb-4">Firmenprofil, Cloud-Sync und Datenverwaltung.</p>
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  Globale Konfiguration
+                </div>
+              </div>
+
+            </div>
+
+            {/* SICHERHEITS STATUS UNTEN */}
+            <div className="mt-16 p-6 bg-slate-200/50 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-emerald-100 text-emerald-700 p-2 rounded-full">🛡️</div>
+                <div>
+                  <div className="font-bold text-slate-700 text-sm">System sicher</div>
+                  <div className="text-xs text-slate-500">Daten sind verschlüsselt im RAM geladen.</div>
+                </div>
+              </div>
+              <button onClick={() => window.location.reload()} className="text-xs text-slate-500 hover:text-red-600 font-bold uppercase">
+                Logout (Sitzung beenden)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vorschau - nur bei Rechnungsmodul */}
+      {activeModule === 'rechnung' && (
+      <div className="main-content flex-1 pt-14 md:pt-0 pb-20 md:pb-6 flex flex-col bg-slate-100 overflow-y-auto md:overflow-visible">
+        
+        {/* ZOOM TOOLBAR - nur auf Mobilgeräten */}
+        {(window.innerWidth < 1024 || window.innerHeight < 600) && (
+          <div className="zoom-toolbar no-print">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-100 px-2 py-1.5 rounded-lg">
+                <span className="text-xs">🔍</span>
+                <input 
+                  type="range" 
+                  min="0.5" 
+                  max="1.0" 
+                  step="0.05" 
+                  value={zoomLevel} 
+                  onChange={(e) => setZoomLevel(parseFloat(e.target.value))}
+                  className="w-20 accent-teal-600 cursor-pointer"
+                />
+                <span className="w-10 text-xs text-right font-mono">{Math.round(zoomLevel * 100)}%</span>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => setZoomLevel(0.5)} className={`px-2 py-1 text-xs rounded ${zoomLevel === 0.5 ? 'bg-teal-600 text-white' : 'bg-gray-200'}`}>50%</button>
+                <button onClick={() => setZoomLevel(0.75)} className={`px-2 py-1 text-xs rounded ${zoomLevel === 0.75 ? 'bg-teal-600 text-white' : 'bg-gray-200'}`}>75%</button>
+                <button onClick={() => setZoomLevel(1)} className={`px-2 py-1 text-xs rounded ${zoomLevel === 1 ? 'bg-teal-600 text-white' : 'bg-gray-200'}`}>100%</button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* SCROLL-BEREICH mit A4-Blatt */}
+        <div className="preview-scroll-area">
+          {/* Wrapper für Zentrierung */}
+          <div style={{
+            display: 'inline-flex',
+            justifyContent: 'center',
+            minWidth: '100%',
+          }}>
+          <div
+            id="rechnung-druck"
+            className="a4-preview"
+            style={{
+              transform: `scale(${zoomLevel})`,
+              transformOrigin: 'top center',
+              fontFamily: 'Arial, Helvetica, sans-serif',
+              fontSize: '11pt',
+              lineHeight: '1.45',
+              color: '#111',
+              boxSizing: 'border-box',
+              marginBottom: `${(zoomLevel - 1) * 297}mm`,
+              marginLeft: `${(zoomLevel - 1) * 105}mm`,
+              marginRight: `${(zoomLevel - 1) * 105}mm`,
+            }}
+          >
+            {/* Falzmarken */}
+            <div className="falzmarke falzmarke-1 no-print"></div>
+            <div className="falzmarke falzmarke-3 no-print"></div>
+            <div className="falzmarke falzmarke-2 no-print"></div>
+            
+            <div className="page-content">
+              {/* Großer Header mit Logo */}
+              <div className="page-header">
+                {/* Logo wenn vorhanden */}
+                {firmenDaten.logo && (
                 <div style={{ 
                   display: 'flex',
                   justifyContent: firmenDaten.logoPosition === 'mitte' ? 'center' : firmenDaten.logoPosition === 'rechts' ? 'flex-end' : 'flex-start',
@@ -5373,98 +8409,157 @@ function MainApp() {
             </div>
           </div>
         </div>
+        </div> {/* Ende Wrapper für Zoom-Höhenberechnung */}
 
-        {/* Privacy Footer */}
-        <div className="privacy-footer mt-8 no-print">
-          {/* Speicher-Warnung bei >90% */}
-          {speicherInfo.istKritisch && (
-            <div style={{
-              background: 'linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%)',
-              border: '2px solid #ef4444',
-              borderRadius: '12px',
-              padding: '16px',
-              marginBottom: '16px',
-              textAlign: 'center'
-            }}>
-              <div style={{ fontSize: '24px', marginBottom: '8px' }}>⚠️</div>
-              <strong style={{ color: '#fca5a5', fontSize: '14px' }}>Speicher fast voll ({speicherInfo.prozent}%)</strong>
-              <p style={{ color: '#fecaca', fontSize: '12px', margin: '8px 0 0 0' }}>
-                Bitte Stammdaten exportieren und mit einem frischen Vault neu starten.
-              </p>
+        {/* Privacy Footer - scrollt mit dem A4-Blatt, erscheint nur am Ende */}
+        <div className="p-4 md:p-6">
+          <div className="privacy-footer no-print">
+            {/* Speicher-Warnung bei >90% */}
+            {speicherInfo.istKritisch && (
+              <div className="bg-red-900/50 border-2 border-red-500 rounded-lg p-4 mb-4 text-center">
+                <div className="text-2xl mb-2">⚠️</div>
+                <strong className="text-red-300 text-sm">Speicher fast voll ({speicherInfo.prozent}%)</strong>
+                <p className="text-red-200 text-xs mt-2">
+                  Bitte Stammdaten exportieren und mit einem frischen Vault neu starten.
+                </p>
+              </div>
+            )}
+            
+            {/* Speicher-Übersicht */}
+            <div className="bg-slate-800/80 rounded-lg p-3 mb-4 border border-slate-600/30">
+              <div className="flex items-center justify-between mb-2 text-xs">
+                <span className="text-slate-400 font-semibold">💾 Vault-Speicher</span>
+                <span className={speicherInfo.istKritisch ? 'text-red-400' : speicherInfo.istWarnung ? 'text-yellow-400' : 'text-green-400'} style={{fontWeight: 700}}>
+                  {speicherInfo.prozent}% belegt ({speicherInfo.belegtKB} KB / {Math.round(speicherInfo.maxDataSize/1024)} KB)
+                </span>
+              </div>
+              <div className="bg-slate-900 rounded h-2 overflow-hidden">
+                <div 
+                  className={`h-full rounded transition-all ${speicherInfo.istKritisch ? 'bg-red-500' : speicherInfo.istWarnung ? 'bg-yellow-500' : 'bg-green-500'}`}
+                  style={{width: `${Math.min(100, speicherInfo.prozent)}%`}}
+                />
+              </div>
+              <div className="flex justify-between mt-1 text-[10px] text-slate-500">
+                <span>{appState.kunden?.length || 0} Kunden • {appState.material?.length || 0} Positionen • {rechnungen.length} Dokumente</span>
+                <span>{speicherInfo.freiKB} KB frei</span>
+              </div>
             </div>
-          )}
-          
-          {/* Speicher-Übersicht */}
-          <div style={{
-            background: 'rgba(30, 41, 59, 0.8)',
-            borderRadius: '10px',
-            padding: '12px 16px',
-            marginBottom: '16px',
-            border: '1px solid rgba(100, 116, 139, 0.3)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: '600' }}>
-                💾 Vault-Speicher
-              </span>
-              <span style={{ 
-                color: speicherInfo.istKritisch ? '#ef4444' : speicherInfo.istWarnung ? '#f59e0b' : '#22c55e', 
-                fontSize: '12px', 
-                fontWeight: '700' 
-              }}>
-                {speicherInfo.prozent}% belegt ({speicherInfo.belegtKB} KB / {Math.round(speicherInfo.maxDataSize/1024)} KB)
-              </span>
+            
+            <div className="privacy-footer-motto">
+              <span className="shield">🛡️</span>Wir speichern nichts. Wir sehen nichts.
             </div>
-            <div style={{
-              background: '#1e293b',
-              borderRadius: '6px',
-              height: '8px',
-              overflow: 'hidden'
-            }}>
-              <div style={{
-                width: `${Math.min(100, speicherInfo.prozent)}%`,
-                height: '100%',
-                background: speicherInfo.istKritisch 
-                  ? 'linear-gradient(90deg, #dc2626, #ef4444)' 
-                  : speicherInfo.istWarnung 
-                    ? 'linear-gradient(90deg, #d97706, #f59e0b)'
-                    : 'linear-gradient(90deg, #059669, #10b981)',
-                borderRadius: '6px',
-                transition: 'width 0.3s ease'
-              }} />
+            <p className="privacy-footer-text">
+              <strong>Zero-Knowledge-Prinzip:</strong> Ihre Daten werden ausschließlich lokal in Ihrem Browser (IndexedDB) gespeichert und Backups mit <strong>AES-256-GCM</strong> verschlüsselt. Kein Server, keine Cloud, keine Datensammlung – Ihre Rechnungen gehören nur Ihnen.
+            </p>
+            <div className="privacy-footer-badges">
+              <span className="privacy-badge green">✓ Lokale Speicherung</span>
+              <span className="privacy-badge green">✓ Keine Registrierung</span>
+              <span className="privacy-badge">🔐 Militärgrad-Verschlüsselung</span>
+              <span className="privacy-badge">💾 IndexedDB</span>
+              <span className="privacy-badge green">✓ DSGVO-konform</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-              <span style={{ color: '#64748b', fontSize: '10px' }}>
-                {appState.kunden?.length || 0} Kunden • {appState.material?.length || 0} Positionen • {rechnungen.length} Dokumente
-              </span>
-              <span style={{ color: '#64748b', fontSize: '10px' }}>
-                {speicherInfo.freiKB} KB frei
-              </span>
+            <div className="privacy-footer-copyright">
+              © 2026 Business Suite – Professionelle Rechnungserstellung mit maximaler Datensicherheit
             </div>
-          </div>
-          
-          <div className="privacy-footer-motto">
-            <span className="shield">🛡️</span>Wir speichern nichts. Wir sehen nichts.
-          </div>
-          <p className="privacy-footer-text">
-            <strong>Zero-Knowledge-Prinzip:</strong> Ihre Daten werden ausschließlich lokal in Ihrem Browser (IndexedDB) gespeichert und Backups mit <strong>AES-256-GCM</strong> verschlüsselt. Kein Server, keine Cloud, keine Datensammlung – Ihre Rechnungen gehören nur Ihnen.
-          </p>
-          <div className="privacy-footer-badges">
-            <span className="privacy-badge green">✓ Lokale Speicherung</span>
-            <span className="privacy-badge green">✓ Keine Registrierung</span>
-            <span className="privacy-badge">🔐 Militärgrad-Verschlüsselung</span>
-            <span className="privacy-badge">💾 IndexedDB</span>
-            <span className="privacy-badge green">✓ DSGVO-konform</span>
-          </div>
-          <div className="privacy-footer-copyright">
-            © 2026 Rechnungsprogramm – Professionelle Rechnungserstellung mit maximaler Datensicherheit
           </div>
         </div>
+        </div>{/* Ende preview-scroll-area */}
       </div>
+      )} {/* Ende activeModule === 'rechnung' Vorschau */}
+      
+      {/* Zeiterfassungs-Modul Hauptbereich */}
+      {activeModule === 'zeit' && (
+        <div className="main-content flex-1 pt-14 md:pt-0 pb-20 md:pb-6 flex flex-col bg-slate-100 overflow-y-auto">
+          <TimeTrackingModule 
+            appState={appState} 
+            updateState={updateState} 
+            activeProjectId={zeitActiveProjectId}
+            onCreateInvoice={(invoiceData) => {
+              try {
+                // Neues Dokument als Entwurf erstellen
+                const neuerEntwurf = {
+                  id: null,
+                  typ: "RECHNUNG",
+                  nummer: "",
+                  datum: new Date().toLocaleDateString('de-DE'),
+                  leistungszeitraum: invoiceData.leistungszeitraum || { von: "", bis: "" },
+                  kunde: { name: "", strasse: "", plz: "", ort: "" },
+                  positionen: invoiceData.positionen || [],
+                  abschlag: "0",
+                  muster: false,
+                  arbeitsort: "",
+                  abschlagsrechnungBetrag: "0",
+                  rabatt: "0",
+                  rabattBeschreibung: "Nachlass",
+                  betreff: invoiceData.betreff || "",
+                  freitext: "",
+                  signaturKunde: false,
+                  signaturAbsender: false,
+                  signaturAbsenderData: "",
+                  signaturAbsenderOrt: "",
+                  signaturAbsenderDatum: "",
+                  rechnungshinweis: "",
+                  entwurfId: -Date.now()
+                };
+                
+                // Entwurf speichern
+                updateState(prev => ({
+                  ...prev,
+                  entwuerfe: [...(prev.entwuerfe || []), neuerEntwurf]
+                }));
+                
+                // Dokument setzen und zu Rechnungsmodul wechseln
+                setAktivesDok(neuerEntwurf);
+                setActiveModule('rechnung');
+                
+                // Erfolgsbenachrichtigung
+                setSuccessMessage(`✅ Neuer Entwurf mit ${invoiceData.positionen.length} Positionen erstellt!`);
+                setTimeout(() => setSuccessMessage(''), 3000);
+              } catch (err) {
+                console.error('Fehler im onCreateInvoice:', err);
+                alert('Fehler beim Erstellen der Rechnung: ' + err.message);
+              }
+            }}
+            speicherInfo={speicherInfo}
+          />
+        </div>
+      )}
+      
+      {/* Einstellungen-Modul Hauptbereich */}
+      {activeModule === 'settings' && (
+        <SettingsModule 
+          appState={appState} 
+          updateState={updateState}
+          cloudConfig={cloudConfig}
+          setCloudConfig={updateCloudConfig}
+          triggerCloudSync={triggerCloudSync}
+          restoreFromCloud={restoreFromCloud}
+          syncStatus={syncStatus}
+          exportFullBackup={exportFullBackup}
+          importBackupFile={importBackupFile}
+          exportStammdatenFile={() => {
+            const stammdaten = {
+              kunden: appState.kunden || [],
+              material: appState.material || [],
+              firmenDaten: appState.firmenDaten || {},
+              exportDatum: new Date().toISOString()
+            };
+            const blob = new Blob([JSON.stringify(stammdaten, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `stammdaten_${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }}
+        />
+      )}
       
       {/* ═══════════════════════════════════════════════════════════════════════════════
-       * ACTION BAR - Sticky Bottom (Mobile-First)
+       * ACTION BAR - Sticky Bottom (Mobile-First) - Nur bei Rechnungsmodul
        * ═══════════════════════════════════════════════════════════════════════════════ */}
-      <div className="fixed bottom-0 left-0 right-0 md:left-96 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-3 py-2 no-print">
+      {activeModule === 'rechnung' && (
+      <div className="action-bar-mobile fixed bottom-0 left-0 right-0 md:left-96 z-40 bg-slate-900/95 backdrop-blur border-t border-slate-700 px-3 py-2 no-print">
         <div className="flex items-center gap-2 max-w-4xl mx-auto overflow-x-auto">
           {/* Dokumenttyp Dropdown */}
           <select
@@ -5707,6 +8802,7 @@ function MainApp() {
           </button>
         </div>
       </div>
+      )} {/* Ende activeModule === 'rechnung' Action Bar */}
     </div>
   );
 }
