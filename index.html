@@ -2806,17 +2806,28 @@ function VaultProvider({ children }) {
     // Zeiterfassung separat mergen (hat verschachtelte Struktur)
     const localZeit = localData.zeiterfassung || DEFAULT_STATE.zeiterfassung;
     const cloudZeit = cloudData.zeiterfassung || DEFAULT_STATE.zeiterfassung;
+    
+    // Projekte und MonatsListe mit Statistiken mergen
+    const projekteResult = mergeLists(localZeit.projekte || [], cloudZeit.projekte || [], 'id');
+    const monatsListeResult = mergeLists(localZeit.monatsListe || [], cloudZeit.monatsListe || [], 'id');
+    
     const mergedZeiterfassung = {
-      projekte: mergeLists(localZeit.projekte || [], cloudZeit.projekte || [], 'id').merged,
-      monatsListe: mergeLists(localZeit.monatsListe || [], cloudZeit.monatsListe || [], 'id').merged,
+      projekte: projekteResult.merged,
+      monatsListe: monatsListeResult.merged,
       mitarbeiter: [...new Set([...(localZeit.mitarbeiter || []), ...(cloudZeit.mitarbeiter || [])])].sort(),
       einstellungen: { ...(localZeit.einstellungen || {}), ...(cloudZeit.einstellungen || {}) },
       aktiv: localZeit.aktiv || cloudZeit.aktiv || null
     };
     
+    // Zeiterfassung-Statistiken berechnen
+    const zeitStats = {
+      added: projekteResult.stats.added + monatsListeResult.stats.added,
+      updated: projekteResult.stats.updated + monatsListeResult.stats.updated
+    };
+    
     // Gesamtstatistik
-    const totalAdded = Object.values(results).reduce((sum, r) => sum + r.stats.added, 0);
-    const totalUpdated = Object.values(results).reduce((sum, r) => sum + r.stats.updated, 0);
+    const totalAdded = Object.values(results).reduce((sum, r) => sum + r.stats.added, 0) + zeitStats.added;
+    const totalUpdated = Object.values(results).reduce((sum, r) => sum + r.stats.updated, 0) + zeitStats.updated;
     
     return {
       mergedData: {
@@ -2833,6 +2844,7 @@ function VaultProvider({ children }) {
         rechnungen: results.rechnungen.stats,
         angebote: results.angebote.stats,
         entwuerfe: results.entwuerfe.stats,
+        zeiterfassung: zeitStats,
         totalAdded,
         totalUpdated
       }
@@ -2940,6 +2952,8 @@ function VaultProvider({ children }) {
       if (stats.angebote.updated > 0) summaryParts.push(`${stats.angebote.updated} aktualisierte Angebote`);
       if (stats.entwuerfe.added > 0) summaryParts.push(`${stats.entwuerfe.added} neue Entwürfe`);
       if (stats.entwuerfe.updated > 0) summaryParts.push(`${stats.entwuerfe.updated} aktualisierte Entwürfe`);
+      if (stats.zeiterfassung?.added > 0) summaryParts.push(`${stats.zeiterfassung.added} neue Zeiterfassungs-Einträge`);
+      if (stats.zeiterfassung?.updated > 0) summaryParts.push(`${stats.zeiterfassung.updated} aktualisierte Zeiterfassungs-Einträge`);
       
       const summaryText = summaryParts.join('\n• ');
       
