@@ -5723,7 +5723,7 @@ function MainApp() {
     return `M-${prefix}-${count.toString().padStart(3, '0')}`;
   };
 
-  const saveDok = (forceMuster = false, silent = false) => {
+  const saveDok = async (forceMuster = false, silent = false) => {
     // Wenn ein Muster bearbeitet wird und NICHT als Muster gespeichert werden soll,
     // erstelle ein neues Dokument (Muster bleibt unverändert)
     const isEditingMuster = aktivesDok.muster && !forceMuster;
@@ -5796,16 +5796,17 @@ function MainApp() {
     const rechnungenItems = allDocs.filter(d => d.typ !== "ANGEBOT");
     const angeboteItems = allDocs.filter(d => d.typ === "ANGEBOT");
     
-    // Entwurf aus der Liste entfernen (falls vorhanden)
-    updateState(prev => {
-      const entwuerfe = (prev.entwuerfe || []).filter(e => e.entwurfId !== entwurfId);
-      return {
-        ...prev,
-        rechnungen: rechnungenItems,
-        angebote: angeboteItems,
-        entwuerfe: entwuerfe
-      };
-    });
+    // Entwurf forensisch sicher löschen (falls vorhanden)
+    if (entwurfId) {
+      await secureDelete(updateState, 'entwuerfe', entwurfId, 'entwurfId');
+    }
+    
+    // Dokumente speichern
+    updateState(prev => ({
+      ...prev,
+      rechnungen: rechnungenItems,
+      angebote: angeboteItems
+    }));
     
     if (neu.muster) setMusterFilter(true);
     if (isEditingMuster) setMusterFilter(false); // Zeige normale Dokumente nach Muster-Konvertierung
@@ -6831,13 +6832,10 @@ function MainApp() {
                             📝 {entwurf.entwurfId === aktivesDok.entwurfId ? 'Wird bearbeitet' : 'Laden'}
                           </button>
                           <button 
-                            onClick={() => {
+                            onClick={async () => {
                               if (confirm('Entwurf wirklich verwerfen? Diese Aktion kann nicht rückgängig gemacht werden.')) {
-                                // Entwurf aus Liste entfernen
-                                updateState(prev => ({
-                                  ...prev,
-                                  entwuerfe: (prev.entwuerfe || []).filter(e => e.entwurfId !== entwurf.entwurfId)
-                                }));
+                                // Entwurf forensisch sicher löschen (3x überschreiben)
+                                await secureDelete(updateState, 'entwuerfe', entwurf.entwurfId, 'entwurfId');
                                 // Wenn der aktive Entwurf gelöscht wird, neues leeres Dokument erstellen
                                 if (entwurf.entwurfId === aktivesDok.entwurfId) {
                                   newDok();
