@@ -3417,7 +3417,7 @@ function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateIn
     if (entries.length === 0 && !material) return alert("Keine Daten eingegeben.");
 
     const daySum = entries.reduce((sum, e) => sum + e.netto, 0);
-    const aktivProjekt = zeiterfassung.projekte.find(p => p.id === activeProjectId);
+    const aktivProjekt = (zeiterfassung.projekte || []).find(p => p.id === activeProjectId);
 
     // In State speichern (Deep Update)
     updateState(prev => {
@@ -3468,7 +3468,7 @@ function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateIn
   };
 
   // Aktives Projekt finden
-  const activeProject = zeiterfassung.projekte.find(p => p.id === activeProjectId);
+  const activeProject = (zeiterfassung.projekte || []).find(p => p.id === activeProjectId);
 
   // UI RENDER
   return (
@@ -4674,7 +4674,7 @@ function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateIn
           const einst = zeiterfassung.einstellungen || {};
           
           // 1. Projekte durchgehen NUR für Projekt-Statistik und Material
-          zeiterfassung.projekte.forEach(proj => {
+          (zeiterfassung.projekte || []).forEach(proj => {
             if (!projektStats[proj.id]) {
               projektStats[proj.id] = { name: proj.name, stundenF: 0, stundenH: 0, tage: 0, material: [] };
             }
@@ -4862,7 +4862,7 @@ const generateTimeTrackingPDF = (appState, zeiterfassung, monthStr) => {
   const mitarbeiterStats = {};
   let gesamtF = 0, gesamtH = 0;
   
-  zeiterfassung.projekte.forEach(proj => {
+  (zeiterfassung.projekte || []).forEach(proj => {
     if (!projektStats[proj.id]) {
       projektStats[proj.id] = { name: proj.name, stundenF: 0, stundenH: 0 };
     }
@@ -7818,7 +7818,7 @@ function MainApp() {
                 <h3 className="text-xl font-bold text-slate-800 mb-2">Zeiterfassung</h3>
                 <p className="text-slate-500 text-sm mb-4">Stunden dokumentieren, Pausen berechnen und Monatsberichte.</p>
                 <div className="text-xs font-bold text-orange-500 uppercase tracking-wide">
-                  {appState.zeiterfassung.projekte.length} Projekte aktiv
+                  {(appState.zeiterfassung?.projekte || []).length} Projekte aktiv
                 </div>
               </div>
 
