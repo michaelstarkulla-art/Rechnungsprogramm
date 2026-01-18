@@ -3331,6 +3331,7 @@ function VaultProvider({ children }) {
   
   // ═══════════════════════════════════════════════════════════════════════════════
   // CLOUD-UPDATE CHECK - Prüft beim Start ob neuere Daten in der Cloud sind
+  // SMARTSYNC: Nutzt "Last Write Wins" statt Merge!
   // ═══════════════════════════════════════════════════════════════════════════════
   
   const checkCloudUpdate = useCallback(async () => {
@@ -3344,147 +3345,63 @@ function VaultProvider({ children }) {
     }
     
     try {
-      console.log('☁️ Prüfe auf Cloud-Updates...');
+      console.log('☁️ [SmartSync] Prüfe auf Cloud-Updates beim Start...');
       
-      // 1. Download-URL holen
-      const authResponse = await fetch(`${cloudConfig.workerUrl}/auth`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ licenseKey: cloudConfig.licenseKey }),
-      });
+      // SMARTSYNC: Nutze die gleiche Logik wie syncAndSave()
+      const headResult = await performHeadCheck();
+      const localTimestamp = getLocalSyncMeta();
       
-      if (!authResponse.ok) {
-        console.log('☁️ Auth fehlgeschlagen, überspringe Cloud-Check');
+      console.log('📊 [SmartSync] Startup-Check:');
+      console.log('   Server-Timestamp:', headResult.serverTimestamp || '(leer)');
+      console.log('   Lokaler-Timestamp:', localTimestamp || '(nie synchronisiert)');
+      
+      // Wenn kein Server-Backup existiert, nichts tun
+      if (!headResult.exists || !headResult.downloadUrl) {
+        console.log('☁️ [SmartSync] Kein Cloud-Backup vorhanden');
         return;
       }
       
-      const { downloadUrl } = await authResponse.json();
-      
-      // 2. Cloud-Daten herunterladen
-      const fileResponse = await fetch(downloadUrl);
-      
-      if (!fileResponse.ok) {
-        if (fileResponse.status === 404) {
-          console.log('☁️ Kein Cloud-Backup vorhanden');
-          return;
+      // LAST WRITE WINS: Nur downloaden wenn Server NEUER ist
+      if (headResult.serverTimestamp !== null && headResult.serverTimestamp > localTimestamp) {
+        console.log('⚡ [SmartSync] Server ist neuer! Frage Benutzer...');
+        
+        // Zeitstempel für Anzeige
+        const serverDate = new Date(headResult.serverTimestamp).toLocaleString('de-DE', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        });
+        const localDate = localTimestamp > 0 
+          ? new Date(localTimestamp).toLocaleString('de-DE', {
+              day: '2-digit', month: '2-digit', year: 'numeric',
+              hour: '2-digit', minute: '2-digit'
+            })
+          : 'nie synchronisiert';
+        
+        const shouldDownload = confirm(
+          `☁️ Neuere Daten in der Cloud gefunden!\n\n` +
+          `Server: ${serverDate}\n` +
+          `Lokal: ${localDate}\n\n` +
+          `⚠️ ACHTUNG: Lokale Daten werden KOMPLETT durch Server-Daten ersetzt!\n` +
+          `(Kein Merge - gelöschte Einträge bleiben gelöscht)\n\n` +
+          `Möchten Sie die Server-Daten laden?`
+        );
+        
+        if (shouldDownload) {
+          // DOWNLOAD & REPLACE - kein Merge!
+          await downloadAndReplace(headResult.downloadUrl, headResult.serverTimestamp);
+          alert('✅ Server-Daten erfolgreich geladen!\n\nLokale Daten wurden ersetzt.');
+        } else {
+          console.log('☁️ [SmartSync] Benutzer hat Download abgelehnt');
         }
-        console.log('☁️ Download fehlgeschlagen:', fileResponse.status);
-        return;
+      } else {
+        console.log('☁️ [SmartSync] Lokale Daten sind aktuell oder neuer');
       }
-      
-      const encryptedBuffer = await fileResponse.arrayBuffer();
-      
-      // 3. Entschlüsseln
-      let cloudData = await workerDecrypt(encryptedBuffer, SecureVault.encryptionKey, true);
-      
-      // Falls Export-Container, entpacken
-      if (cloudData && cloudData.f === 'fsb' && cloudData.d) {
-        cloudData = cloudData.d;
-      }
-      
-      // 4. Validieren
-      if (!cloudData || (!cloudData.kunden && !cloudData.material)) {
-        console.log('☁️ Cloud-Daten ungültig oder leer');
-        return;
-      }
-      
-      // 5. Zeitstempel für Anzeige holen
-      const cloudModified = cloudData.meta?.lastModified ? new Date(cloudData.meta.lastModified) : null;
-      const localModified = appState.meta?.lastModified ? new Date(appState.meta.lastModified) : null;
-      
-      // 6. Benutzer fragen
-      const cloudDateStr = cloudModified ? cloudModified.toLocaleString('de-DE', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      }) : 'unbekannt';
-      
-      const localDateStr = localModified ? localModified.toLocaleString('de-DE', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      }) : 'unbekannt';
-      
-      // 7. SMART MERGE - Daten zusammenführen statt überschreiben
-      const { mergedData, stats } = mergeAllData(appState, cloudData);
-      
-      // Prüfen ob überhaupt etwas zu mergen ist
-      if (stats.totalAdded === 0 && stats.totalUpdated === 0) {
-        console.log('☁️ Keine neuen Daten in der Cloud');
-        return;
-      }
-      
-      // Merge-Zusammenfassung erstellen
-      const summaryParts = [];
-      if (stats.kunden.added > 0) summaryParts.push(`${stats.kunden.added} neue Kunden`);
-      if (stats.kunden.updated > 0) summaryParts.push(`${stats.kunden.updated} aktualisierte Kunden`);
-      if (stats.material.added > 0) summaryParts.push(`${stats.material.added} neue Materialien`);
-      if (stats.material.updated > 0) summaryParts.push(`${stats.material.updated} aktualisierte Materialien`);
-      if (stats.rechnungen.added > 0) summaryParts.push(`${stats.rechnungen.added} neue Rechnungen`);
-      if (stats.rechnungen.updated > 0) summaryParts.push(`${stats.rechnungen.updated} aktualisierte Rechnungen`);
-      if (stats.angebote.added > 0) summaryParts.push(`${stats.angebote.added} neue Angebote`);
-      if (stats.angebote.updated > 0) summaryParts.push(`${stats.angebote.updated} aktualisierte Angebote`);
-      if (stats.entwuerfe.added > 0) summaryParts.push(`${stats.entwuerfe.added} neue Entwürfe`);
-      if (stats.entwuerfe.updated > 0) summaryParts.push(`${stats.entwuerfe.updated} aktualisierte Entwürfe`);
-      if (stats.zeiterfassung?.added > 0) summaryParts.push(`${stats.zeiterfassung.added} neue Zeiterfassungs-Einträge`);
-      if (stats.zeiterfassung?.updated > 0) summaryParts.push(`${stats.zeiterfassung.updated} aktualisierte Zeiterfassungs-Einträge`);
-      
-      const summaryText = summaryParts.join('\n• ');
-      
-      const shouldMerge = confirm(
-        `☁️ Cloud-Backup gefunden!\n\n` +
-        `Cloud: ${cloudDateStr}\n` +
-        `Lokal: ${localDateStr}\n\n` +
-        `Folgende Daten werden zusammengeführt:\n• ${summaryText}\n\n` +
-        `Möchten Sie die Daten zusammenführen?\n` +
-        `(Lokale Daten bleiben erhalten, neue werden hinzugefügt)`
-      );
-      
-      if (!shouldMerge) {
-        console.log('☁️ Benutzer hat Cloud-Merge abgelehnt');
-        return;
-      }
-      
-      // 7. Gemergte Daten übernehmen
-      const newState = {
-        ...DEFAULT_STATE,
-        kunden: mergedData.kunden,
-        material: mergedData.material,
-        rechnungen: mergedData.rechnungen,
-        angebote: mergedData.angebote,
-        entwuerfe: mergedData.entwuerfe,
-        planung: mergedData.planung || cloudData.planung || appState.planung || [],
-        auftragsListe: mergedData.auftragsListe || cloudData.auftragsListe || appState.auftragsListe || [],
-        mitarbeiterSkills: { ...(appState.mitarbeiterSkills || {}), ...(cloudData.mitarbeiterSkills || {}) },
-        planungSettings: {
-          zeitraster: cloudData.planungSettings?.zeitraster || appState.planungSettings?.zeitraster || [],
-          mitarbeiterSkills: { ...(appState.planungSettings?.mitarbeiterSkills || {}), ...(cloudData.planungSettings?.mitarbeiterSkills || {}) }
-        },
-        zeiterfassung: mergedData.zeiterfassung,
-        firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(cloudData.firmenDaten || {}), ...(appState.firmenDaten || {}) },
-        meta: { 
-          ...appState.meta,
-          lastModified: new Date().toISOString(),
-          lastMerge: new Date().toISOString(),
-          mergeSource: 'cloud-auto-check'
-        }
-      };
-      
-      updateState(newState);
-      await forceSave();
-      
-      console.log('☁️ Cloud-Daten erfolgreich gemerged:', stats);
-      alert(`✅ Cloud-Sync abgeschlossen!\n\n${stats.totalAdded} Einträge hinzugefügt\n${stats.totalUpdated} Einträge aktualisiert`);
       
     } catch (err) {
       // Silent fail - nur loggen, nicht den User stören
-      console.error('☁️ Cloud-Check Fehler (silent):', err.message);
+      console.error('☁️ [SmartSync] Cloud-Check Fehler (silent):', err.message);
     }
-  }, [cloudConfig, appState, updateState, forceSave, mergeAllData]);
+  }, [cloudConfig, performHeadCheck, getLocalSyncMeta, downloadAndReplace]);
   
   // Effect: Cloud-Check nach erfolgreichem Login
   useEffect(() => {
