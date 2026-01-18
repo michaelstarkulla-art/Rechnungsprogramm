@@ -5761,14 +5761,6 @@ function ProjectPlanningModule({ appState, updateState }) {
     ? appState.planungSettings.zeitraster 
     : defaultZeitraster;
   
-  // DEBUG - Entferne nach Test
-  console.log('🔍 DEBUG Wochenansicht:', {
-    planungSettings: appState.planungSettings,
-    zeitrasterFromState: appState.planungSettings?.zeitraster,
-    zeitrasterUsed: zeitraster,
-    viewMode: viewMode
-  });
-  
   const updateZeitraster = (newRaster) => {
     updateState(prev => ({
       ...prev,
