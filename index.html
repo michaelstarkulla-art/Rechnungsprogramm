@@ -2310,8 +2310,8 @@ function VaultProvider({ children }) {
   }, []);
   
   /**
-   * PRE-CHECK: HEAD Request zum Server für Timestamp-Vergleich
-   * Lädt KEINE Daten herunter, nur den Header
+   * PRE-CHECK: Prüft Server-Status und holt Timestamp
+   * Kompatibel mit bestehendem Worker (nutzt downloadUrl für HEAD-Request)
    */
   const performHeadCheck = useCallback(async () => {
     if (!cloudConfig.enabled || !cloudConfig.licenseKey || !cloudConfig.workerUrl) {
@@ -2327,38 +2327,73 @@ function VaultProvider({ children }) {
       });
       
       if (!authResponse.ok) {
-        throw new Error('Auth fehlgeschlagen');
+        const errorData = await authResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || `Auth fehlgeschlagen (${authResponse.status})`);
       }
       
-      const { headUrl, downloadUrl } = await authResponse.json();
+      const authData = await authResponse.json();
+      const { downloadUrl } = authData;
       
-      // HEAD-Request zur R2-URL (oder spezielle /head Endpoint)
-      const headRequestUrl = headUrl || `${cloudConfig.workerUrl}/head`;
-      const headResponse = await fetch(headRequestUrl, {
-        method: 'HEAD',
-        headers: {
-          'X-License-Key': cloudConfig.licenseKey
+      if (!downloadUrl) {
+        console.log('📭 [SmartSync] Keine downloadUrl erhalten - Server vermutlich leer');
+        return { serverTimestamp: null, exists: false, downloadUrl: null };
+      }
+      
+      // HEAD-Request zur Download-URL um Metadaten zu prüfen
+      // R2 Presigned URLs unterstützen HEAD-Requests
+      try {
+        const headResponse = await fetch(downloadUrl, {
+          method: 'HEAD'
+        });
+        
+        if (headResponse.status === 404 || headResponse.status === 403) {
+          console.log('📭 [SmartSync] Server ist leer - kein Backup vorhanden');
+          return { serverTimestamp: null, exists: false, downloadUrl };
         }
-      });
-      
-      if (headResponse.status === 404) {
-        console.log('📭 [SmartSync] Server ist leer - kein Backup vorhanden');
-        return { serverTimestamp: null, exists: false, downloadUrl };
+        
+        // Versuche Server-Timestamp aus verschiedenen Headers zu lesen
+        let serverTimestamp = null;
+        
+        // Option 1: Custom Header (falls Worker es setzt)
+        const customHeader = headResponse.headers.get('X-Last-Modified-Server');
+        if (customHeader) {
+          serverTimestamp = parseInt(customHeader, 10);
+        }
+        
+        // Option 2: Standard Last-Modified Header (R2 setzt diesen)
+        if (!serverTimestamp) {
+          const lastModified = headResponse.headers.get('Last-Modified');
+          if (lastModified) {
+            serverTimestamp = new Date(lastModified).getTime();
+          }
+        }
+        
+        // Option 3: ETag als Fallback-Indikator (Datei existiert)
+        const etag = headResponse.headers.get('ETag');
+        
+        console.log('🔍 [SmartSync] HEAD-Check:', {
+          exists: headResponse.ok,
+          serverTimestamp,
+          lastModified: headResponse.headers.get('Last-Modified'),
+          etag
+        });
+        
+        return {
+          serverTimestamp,
+          exists: headResponse.ok,
+          downloadUrl
+        };
+        
+      } catch (headError) {
+        // HEAD nicht unterstützt - Fallback: Datei existiert vermutlich
+        console.warn('⚠️ [SmartSync] HEAD-Request fehlgeschlagen, nutze Fallback');
+        return {
+          serverTimestamp: null,
+          exists: true, // Annahme: Datei existiert
+          downloadUrl
+        };
       }
       
-      // Server-Timestamp aus Header lesen
-      const serverTimestamp = headResponse.headers.get('X-Last-Modified-Server');
-      
-      console.log('🔍 [SmartSync] HEAD-Check:', {
-        exists: headResponse.ok,
-        serverTimestamp: serverTimestamp ? parseInt(serverTimestamp, 10) : null
-      });
-      
-      return {
-        serverTimestamp: serverTimestamp ? parseInt(serverTimestamp, 10) : null,
-        exists: headResponse.ok,
-        downloadUrl
-      };
     } catch (error) {
       console.error('❌ [SmartSync] HEAD-Check fehlgeschlagen:', error);
       throw new Error('Server-Status konnte nicht geprüft werden: ' + error.message);
@@ -2590,6 +2625,13 @@ function VaultProvider({ children }) {
           
           return await downloadAndReplace(headResult.downloadUrl, serverTime);
         }
+      }
+      
+      // Sonderfall: Server existiert aber kein Timestamp lesbar
+      // → Frage User ob Download oder Upload
+      if (headResult.exists && headResult.serverTimestamp === null && localTimestamp === 0) {
+        console.log('⚠️ [SmartSync] Server hat Daten, aber kein Timestamp lesbar');
+        console.log('   → Führe Upload durch (lokale Daten als "neuer" behandeln)');
       }
       
       // ══════════════════════════════════════════════════════════════
@@ -2991,6 +3033,9 @@ function VaultProvider({ children }) {
     
     try {
       console.log('🔄 Manueller SmartSync gestartet...');
+      console.log('   License Key:', cloudConfig.licenseKey ? '✓ vorhanden (' + cloudConfig.licenseKey.substring(0, 4) + '...)' : '✗ fehlt');
+      console.log('   Worker URL:', cloudConfig.workerUrl);
+      
       const result = await syncAndSave();
       
       // Feedback für den User
@@ -3002,9 +3047,18 @@ function VaultProvider({ children }) {
       
     } catch (err) {
       console.error('Manueller Sync fehlgeschlagen:', err);
-      alert('Sync fehlgeschlagen: ' + err.message);
+      
+      // Detailliertere Fehlermeldung
+      let errorMsg = 'Sync fehlgeschlagen: ' + err.message;
+      if (err.message.includes('Auth fehlgeschlagen')) {
+        errorMsg += '\n\n⚠️ Mögliche Ursachen:\n' +
+          '• Lizenzschlüssel ungültig oder abgelaufen\n' +
+          '• Worker-URL nicht erreichbar\n' +
+          '• Netzwerkproblem';
+      }
+      alert(errorMsg);
     }
-  }, [syncAndSave]);
+  }, [syncAndSave, cloudConfig]);
   
   // Cloud-Restore: Backup aus Cloud wiederherstellen
   const restoreFromCloud = useCallback(async () => {
