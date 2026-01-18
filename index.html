@@ -5750,13 +5750,16 @@ function ProjectPlanningModule({ appState, updateState }) {
   const [neuerAuftrag, setNeuerAuftrag] = useState(''); // Neuer Auftrag Text
   const [draggedAuftrag, setDraggedAuftrag] = useState(null); // Für Auftrag Drag&Drop
   
-  // Zeitraster aus appState oder Standard
-  const zeitraster = appState.planungSettings?.zeitraster || [
+  // Zeitraster aus appState oder Standard (prüfe auf leeres Array!)
+  const defaultZeitraster = [
     { von: '07:00', bis: '09:00' },
     { von: '09:00', bis: '12:00' },
     { von: '12:00', bis: '14:00' },
     { von: '14:00', bis: '17:00' }
   ];
+  const zeitraster = (appState.planungSettings?.zeitraster?.length > 0) 
+    ? appState.planungSettings.zeitraster 
+    : defaultZeitraster;
   
   const updateZeitraster = (newRaster) => {
     updateState(prev => ({
