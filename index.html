@@ -2319,7 +2319,7 @@ function VaultProvider({ children }) {
     }
     
     try {
-      // Auth-Request um Download-URL zu bekommen
+      // Auth-Request um URLs zu bekommen
       const authResponse = await fetch(`${cloudConfig.workerUrl}/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2332,67 +2332,101 @@ function VaultProvider({ children }) {
       }
       
       const authData = await authResponse.json();
-      const { downloadUrl } = authData;
+      const { downloadUrl, headUrl } = authData;
+      
+      console.log('🔍 [SmartSync] Auth-Response:', { downloadUrl: !!downloadUrl, headUrl: !!headUrl });
       
       if (!downloadUrl) {
         console.log('📭 [SmartSync] Keine downloadUrl erhalten - Server vermutlich leer');
         return { serverTimestamp: null, exists: false, downloadUrl: null };
       }
       
-      // HEAD-Request zur Download-URL um Metadaten zu prüfen
-      // R2 Presigned URLs unterstützen HEAD-Requests
-      try {
-        const headResponse = await fetch(downloadUrl, {
-          method: 'HEAD'
-        });
-        
-        if (headResponse.status === 404 || headResponse.status === 403) {
-          console.log('📭 [SmartSync] Server ist leer - kein Backup vorhanden');
-          return { serverTimestamp: null, exists: false, downloadUrl };
-        }
-        
-        // Versuche Server-Timestamp aus verschiedenen Headers zu lesen
-        let serverTimestamp = null;
-        
-        // Option 1: Custom Header (falls Worker es setzt)
-        const customHeader = headResponse.headers.get('X-Last-Modified-Server');
-        if (customHeader) {
-          serverTimestamp = parseInt(customHeader, 10);
-        }
-        
-        // Option 2: Standard Last-Modified Header (R2 setzt diesen)
-        if (!serverTimestamp) {
-          const lastModified = headResponse.headers.get('Last-Modified');
-          if (lastModified) {
-            serverTimestamp = new Date(lastModified).getTime();
+      // Nutze den /head Endpoint des Workers für genauen Timestamp
+      let serverTimestamp = null;
+      let exists = false;
+      
+      // Methode 1: Worker's /head Endpoint mit License (beste Option)
+      if (headUrl) {
+        try {
+          // WICHTIG: License als Header oder URL-Parameter mitsenden!
+          const headUrlWithLicense = headUrl + (headUrl.includes('?') ? '&' : '?') + 
+            `license=${encodeURIComponent(cloudConfig.licenseKey)}`;
+          
+          const headResponse = await fetch(headUrlWithLicense, { 
+            method: 'HEAD',
+            headers: { 'X-License-Key': cloudConfig.licenseKey }
+          });
+          console.log('🔍 [SmartSync] HEAD-Response Status:', headResponse.status);
+          
+          if (headResponse.ok) {
+            exists = true;
+            const tsHeader = headResponse.headers.get('X-Last-Modified-Server');
+            if (tsHeader) {
+              serverTimestamp = parseInt(tsHeader, 10);
+              console.log('🔍 [SmartSync] Server-Timestamp aus HEAD:', serverTimestamp);
+            }
+          } else if (headResponse.status === 404) {
+            console.log('📭 [SmartSync] Server ist leer (404)');
+            return { serverTimestamp: null, exists: false, downloadUrl };
+          } else if (headResponse.status === 401) {
+            console.warn('⚠️ [SmartSync] HEAD 401 - Auth Problem, nutze Fallback');
           }
+        } catch (e) {
+          console.warn('⚠️ [SmartSync] HEAD-Endpoint Fehler:', e.message);
         }
-        
-        // Option 3: ETag als Fallback-Indikator (Datei existiert)
-        const etag = headResponse.headers.get('ETag');
-        
-        console.log('🔍 [SmartSync] HEAD-Check:', {
-          exists: headResponse.ok,
-          serverTimestamp,
-          lastModified: headResponse.headers.get('Last-Modified'),
-          etag
-        });
-        
-        return {
-          serverTimestamp,
-          exists: headResponse.ok,
-          downloadUrl
-        };
-        
-      } catch (headError) {
-        // HEAD nicht unterstützt - Fallback: Datei existiert vermutlich
-        console.warn('⚠️ [SmartSync] HEAD-Request fehlgeschlagen, nutze Fallback');
-        return {
-          serverTimestamp: null,
-          exists: true, // Annahme: Datei existiert
-          downloadUrl
-        };
       }
+      
+      // Methode 2: /confirm Endpoint für Timestamp (falls HEAD nicht funktioniert)
+      if (!serverTimestamp) {
+        try {
+          const confirmResponse = await fetch(`${cloudConfig.workerUrl}/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ licenseKey: cloudConfig.licenseKey }),
+          });
+          
+          if (confirmResponse.ok) {
+            const confirmData = await confirmResponse.json();
+            if (confirmData.serverTimestamp) {
+              serverTimestamp = confirmData.serverTimestamp;
+              exists = true;
+              console.log('🔍 [SmartSync] Server-Timestamp aus /confirm:', serverTimestamp);
+            }
+          } else if (confirmResponse.status === 404) {
+            console.log('📭 [SmartSync] Server ist leer (confirm 404)');
+            return { serverTimestamp: null, exists: false, downloadUrl };
+          }
+        } catch (e) {
+          console.warn('⚠️ [SmartSync] Confirm-Endpoint Fehler:', e.message);
+        }
+      }
+      
+      // Methode 3: Fallback - Download-URL existiert = Datei existiert
+      if (!serverTimestamp && downloadUrl) {
+        try {
+          const headResponse = await fetch(downloadUrl, { method: 'HEAD' });
+          if (headResponse.ok) {
+            exists = true;
+            // Versuche Last-Modified Header
+            const lastModified = headResponse.headers.get('Last-Modified');
+            if (lastModified) {
+              serverTimestamp = new Date(lastModified).getTime();
+              console.log('🔍 [SmartSync] Server-Timestamp aus Last-Modified:', serverTimestamp);
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ [SmartSync] Download HEAD Fehler:', e.message);
+          exists = true; // Annahme: existiert
+        }
+      }
+      
+      console.log('🔍 [SmartSync] HEAD-Check Ergebnis:', {
+        exists,
+        serverTimestamp,
+        downloadUrl: !!downloadUrl
+      });
+      
+      return { serverTimestamp, exists, downloadUrl };
       
     } catch (error) {
       console.error('❌ [SmartSync] HEAD-Check fehlgeschlagen:', error);
@@ -2678,8 +2712,7 @@ function VaultProvider({ children }) {
   }, [cloudConfig, appState, performHeadCheck, getLocalSyncMeta, downloadAndReplace, uploadToServer, forceSave]);
   
   // ═══════════════════════════════════════════════════════════════════════════════
-  // LEGACY CLOUD-SYNC FUNKTION - Wird durch syncAndSave() ersetzt (Fire-and-Forget Modus)
-  // ═══════════════════════════════════════════════════════════════════════════════
+  // CLOUD-SYNC FUNKTION - Upload mit Server-Timestamp Speicherung
   // ═══════════════════════════════════════════════════════════════════════════════
   
   const syncToCloud = useCallback(async (encryptedBlob) => {
@@ -2695,7 +2728,7 @@ function VaultProvider({ children }) {
     try {
       console.log('☁️ Starte Cloud-Sync...');
       
-      // Schritt A: Authentifizierung und Presigned URL holen
+      // Schritt A: Authentifizierung und Upload-URL holen
       const authResponse = await fetch(`${cloudConfig.workerUrl}/auth`, {
         method: 'POST',
         headers: {
@@ -2709,10 +2742,10 @@ function VaultProvider({ children }) {
         throw new Error(errorData.error || `Auth fehlgeschlagen: ${authResponse.status}`);
       }
       
-      const { uploadUrl, downloadUrl, objectKey } = await authResponse.json();
-      console.log('☁️ Presigned URL erhalten für:', objectKey);
+      const { uploadUrl, objectKey } = await authResponse.json();
+      console.log('☁️ Upload-URL erhalten für:', objectKey);
       
-      // Schritt B: Blob direkt zur Presigned URL hochladen
+      // Schritt B: Blob hochladen
       const uploadResponse = await fetch(uploadUrl, {
         method: 'PUT',
         body: encryptedBlob,
@@ -2723,6 +2756,61 @@ function VaultProvider({ children }) {
       
       if (!uploadResponse.ok) {
         throw new Error(`Upload fehlgeschlagen: ${uploadResponse.status}`);
+      }
+      
+      // Schritt C: Server-Timestamp aus Response lesen und SPEICHERN!
+      let serverTimestamp = null;
+      
+      // Option 1: Aus Upload-Response JSON (unser Worker sendet das)
+      try {
+        const uploadResult = await uploadResponse.json();
+        if (uploadResult.serverTimestamp) {
+          serverTimestamp = uploadResult.serverTimestamp;
+        }
+      } catch (e) {
+        // Response war kein JSON, versuche Header
+      }
+      
+      // Option 2: Aus Header
+      if (!serverTimestamp) {
+        const tsHeader = uploadResponse.headers.get('X-Server-Timestamp');
+        if (tsHeader) {
+          serverTimestamp = parseInt(tsHeader, 10);
+        }
+      }
+      
+      // Option 3: Confirm-Request an Worker
+      if (!serverTimestamp) {
+        try {
+          const confirmResponse = await fetch(`${cloudConfig.workerUrl}/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ licenseKey: cloudConfig.licenseKey }),
+          });
+          if (confirmResponse.ok) {
+            const confirmData = await confirmResponse.json();
+            serverTimestamp = confirmData.serverTimestamp;
+          }
+        } catch (e) {
+          console.warn('☁️ Confirm-Request fehlgeschlagen');
+        }
+      }
+      
+      // WICHTIG: Server-Timestamp lokal speichern!
+      if (serverTimestamp) {
+        localStorage.setItem('smartsync_server_timestamp', JSON.stringify({
+          lastServerTimestamp: serverTimestamp,
+          lastSyncAt: new Date().toISOString()
+        }));
+        console.log('☁️ Server-Timestamp gespeichert:', serverTimestamp);
+      } else {
+        // Fallback: Aktuelle Zeit als geschätzten Timestamp speichern
+        const estimatedTimestamp = Date.now();
+        localStorage.setItem('smartsync_server_timestamp', JSON.stringify({
+          lastServerTimestamp: estimatedTimestamp,
+          lastSyncAt: new Date().toISOString()
+        }));
+        console.log('☁️ Geschätzter Timestamp gespeichert:', estimatedTimestamp);
       }
       
       console.log('☁️ Cloud-Sync erfolgreich!');
