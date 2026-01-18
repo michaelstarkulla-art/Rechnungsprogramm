@@ -6708,7 +6708,7 @@ function ProjectPlanningModule({ appState, updateState }) {
               doc.setFontSize(7);
               doc.setFont(undefined, 'italic');
               doc.setTextColor(100, 116, 139); // slate-500 (dunkler für bessere Lesbarkeit)
-              const notizText = '📝 ' + eintrag.notiz.substring(0, 40) + (eintrag.notiz.length > 40 ? '...' : '');
+              const notizText = 'Notiz: ' + eintrag.notiz.substring(0, 40) + (eintrag.notiz.length > 40 ? '...' : '');
               doc.text(notizText, x + 2, notizY);
             }
           }
