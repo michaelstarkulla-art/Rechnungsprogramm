@@ -2741,7 +2741,7 @@ function VaultProvider({ children }) {
     }
   }, [cloudConfig]);
   
-  // Debounced Save Funktion - NUR LOKAL (Cloud-Sync erfolgt separat via SmartSync)
+  // Debounced Save Funktion - Lokal speichern + automatischer SmartSync
   const saveToVault = useCallback(async (stateToSave) => {
     if (!SecureVault.encryptionKey) return;
     
@@ -2772,21 +2772,45 @@ function VaultProvider({ children }) {
       setLastSaved(new Date());
       console.log('✓ Vault lokal gespeichert (5MB Fixed-Size)');
       
-      // SMARTSYNC: Fire-and-Forget mit Last-Write-Wins Prüfung
-      // Der alte syncToCloud wird durch syncAndSave ersetzt
-      // Dieser prüft erst ob Server neuer ist BEVOR er hochlädt
-      if (cloudConfig.enabled && cloudConfig.licenseKey) {
-        // Debounced Cloud-Sync: Nicht bei jedem lokalen Save,
-        // sondern nur wenn explizit angefordert oder nach längerem Interval
-        // --> Der User kann manuell syncen oder es passiert beim App-Start
-        console.log('☁️ Cloud-Sync aktiviert - nutze manuellen Sync-Button für SmartSync');
+      // AUTOMATISCHER SMARTSYNC: Fire-and-Forget mit Last-Write-Wins
+      // Prüft erst ob Server neuer ist, dann Upload ODER Download
+      if (cloudConfig.enabled && cloudConfig.licenseKey && cloudConfig.workerUrl) {
+        // Fire-and-Forget: Nicht blockieren, im Hintergrund ausführen
+        (async () => {
+          try {
+            console.log('☁️ [AutoSync] Starte automatischen SmartSync...');
+            
+            // HEAD-Check: Ist der Server neuer?
+            const headResult = await performHeadCheck();
+            const localTimestamp = getLocalSyncMeta();
+            
+            // Wenn Server neuer ist → NICHT automatisch überschreiben!
+            // Das würde die gerade gemachte Änderung verlieren
+            if (headResult.exists && headResult.serverTimestamp && headResult.serverTimestamp > localTimestamp) {
+              console.log('⚠️ [AutoSync] Server ist neuer! Automatischer Upload wird GESTOPPT.');
+              console.log('   Nutze manuellen Sync-Button um Server-Daten zu laden.');
+              setSyncStatus('warning');
+              setTimeout(() => setSyncStatus('idle'), 5000);
+              return;
+            }
+            
+            // Server ist älter oder gleich → Upload durchführen
+            setSyncStatus('uploading');
+            const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+            await syncToCloud(blob);
+            
+          } catch (err) {
+            console.error('☁️ [AutoSync] Fehler:', err.message);
+            // Silent fail - nicht den User stören
+          }
+        })();
       }
       
     } catch (err) {
       console.error('Speichern fehlgeschlagen:', err);
       setSaveStatus('error');
     }
-  }, [cloudConfig.enabled, cloudConfig.licenseKey]);
+  }, [cloudConfig.enabled, cloudConfig.licenseKey, cloudConfig.workerUrl, performHeadCheck, getLocalSyncMeta, syncToCloud]);
   
   // Debouncing: Speichert erst nach 2 Sekunden Inaktivität
   const queueSave = useCallback((newState) => {
