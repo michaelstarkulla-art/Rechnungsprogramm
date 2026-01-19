@@ -5729,6 +5729,7 @@ function ProjectPlanningModule({ appState, updateState }) {
   const [activeCell, setActiveCell] = useState(null);
   const [toolbarTab, setToolbarTab] = useState('kunden');
   const [selectedMitarbeiter, setSelectedMitarbeiter] = useState(null); // Ausgewählter MA für Skills
+  const [tappedMitarbeiter, setTappedMitarbeiter] = useState(null); // TAP & PLACE: Ausgewählter MA zum Einfügen
   const [copiedText, setCopiedText] = useState(null);
   const [kundenSuche, setKundenSuche] = useState('');
   const [showFarbModal, setShowFarbModal] = useState(null); // { dateKey, zeilenIndex }
@@ -5830,16 +5831,17 @@ function ProjectPlanningModule({ appState, updateState }) {
       // Mitarbeiter zur Zelle hinzufügen
       const existing = getEintragByZeile(targetDateKey, targetZeile);
       if (existing?.text) {
-        // Füge MA zum bestehenden Text hinzu
+        // Füge MA zum bestehenden Text hinzu (FORENSISCH SICHER)
         const alteMA = getMitarbeiterFromText(existing.text);
         if (!alteMA.includes(droppedMitarbeiter)) {
+          console.log('🔐 handleDrop MA: Forensisch sichere Einfügung...');
           const projekt = getProjektName(existing.text);
           const neueMAListe = [...alteMA, droppedMitarbeiter];
           const neuerText = projekt ? `${projekt}: ${neueMAListe.join(', ')}` : neueMAListe.join(', ');
-          updateEintrag(targetDateKey, targetZeile, neuerText);
+          await updateEintragSecure(targetDateKey, targetZeile, neuerText);
         }
       } else {
-        // Neuer Eintrag nur mit MA
+        // Neuer Eintrag nur mit MA (kein secureDelete nötig)
         updateEintrag(targetDateKey, targetZeile, droppedMitarbeiter);
       }
       console.log('✅ Mitarbeiter', droppedMitarbeiter, 'in Zelle eingefügt');
@@ -5853,11 +5855,12 @@ function ProjectPlanningModule({ appState, updateState }) {
         const auftrag = JSON.parse(auftragJSON);
         const existing = getEintragByZeile(targetDateKey, targetZeile);
         if (existing?.text) {
-          // Auftrag zum bestehenden Projekt hinzufügen
+          // Auftrag zum bestehenden Projekt hinzufügen (FORENSISCH SICHER)
+          console.log('🔐 handleDrop Auftrag: Forensisch sichere Einfügung...');
           const neuerText = existing.text + ' + ' + auftrag.text;
-          updateEintrag(targetDateKey, targetZeile, neuerText);
+          await updateEintragSecure(targetDateKey, targetZeile, neuerText);
         } else {
-          // Neuer Eintrag mit Auftragstext
+          // Neuer Eintrag mit Auftragstext (kein secureDelete nötig)
           updateEintrag(targetDateKey, targetZeile, auftrag.text);
         }
         console.log('✅ Auftrag', auftrag.text, 'in Zelle eingefügt');
@@ -6195,8 +6198,55 @@ function ProjectPlanningModule({ appState, updateState }) {
       }));
     }
   };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FORENSISCH SICHERE VERSION - verwendet secureDelete + Neuanlage
+  // ═══════════════════════════════════════════════════════════════════════════
+  const updateEintragSecure = async (dateKey, zeilenIndex, text, additionalProps = {}) => {
+    const existing = getEintragByZeile(dateKey, zeilenIndex);
+    
+    if (existing) {
+      // FORENSISCH SICHER: Erst alten Eintrag 3x überschreiben und löschen
+      console.log('🔐 updateEintragSecure: Forensisches Löschen des alten Eintrags...');
+      await secureDelete(updateState, 'planung', existing.id);
+      
+      // Dann neuen Eintrag mit neuem Text erstellen (falls nicht leer)
+      if (text.trim() !== '') {
+        const newEntry = {
+          id: Date.now() + Math.random(),
+          datum: dateKey,
+          zeilenIndex: zeilenIndex,
+          text: text,
+          farbe: existing.farbe, // Farbe übernehmen
+          stunden: existing.stunden, // Stunden übernehmen
+          notiz: existing.notiz, // Notiz übernehmen
+          ...additionalProps,
+          created: new Date().toISOString(),
+          secureReplaced: true // Marker dass dies ein sicher ersetzter Eintrag ist
+        };
+        updateState(prev => ({
+          ...prev,
+          planung: [...(prev.planung || []), newEntry]
+        }));
+      }
+    } else if (text.trim() !== '') {
+      // Kein existierender Eintrag - einfach neu anlegen
+      const newEntry = {
+        id: Date.now() + Math.random(),
+        datum: dateKey,
+        zeilenIndex: zeilenIndex,
+        text: text,
+        ...additionalProps,
+        created: new Date().toISOString()
+      };
+      updateState(prev => ({
+        ...prev,
+        planung: [...(prev.planung || []), newEntry]
+      }));
+    }
+  };
   
-  const insertToActiveCell = (textToInsert) => {
+  const insertToActiveCell = async (textToInsert) => {
     if (!activeCell) {
       alert('Bitte zuerst eine Zeile anklicken!');
       return;
@@ -6205,7 +6255,15 @@ function ProjectPlanningModule({ appState, updateState }) {
     const existing = getEintragByZeile(dateKey, zeilenIndex);
     const currentText = existing?.text || '';
     const newText = currentText ? `${currentText}, ${textToInsert}` : textToInsert;
-    updateEintrag(dateKey, zeilenIndex, newText);
+    
+    if (existing) {
+      // FORENSISCH SICHER: Text wird geändert
+      console.log('🔐 insertToActiveCell: Forensisch sichere Änderung...');
+      await updateEintragSecure(dateKey, zeilenIndex, newText);
+    } else {
+      // Neuer Eintrag
+      updateEintrag(dateKey, zeilenIndex, newText);
+    }
   };
   
   const addZeile = (dateKey) => {
@@ -6481,9 +6539,16 @@ function ProjectPlanningModule({ appState, updateState }) {
     console.log('✅ moveProjekt: Tausch forensisch sicher abgeschlossen');
   };
   
-  const pasteToZeile = (dateKey, zeilenIndex) => {
+  const pasteToZeile = async (dateKey, zeilenIndex) => {
     if (!copiedText) return;
-    updateEintrag(dateKey, zeilenIndex, copiedText);
+    const existing = getEintragByZeile(dateKey, zeilenIndex);
+    if (existing) {
+      // FORENSISCH SICHER: Bestehender Eintrag wird überschrieben
+      console.log('🔐 pasteToZeile: Forensisch sicheres Überschreiben...');
+      await updateEintragSecure(dateKey, zeilenIndex, copiedText);
+    } else {
+      updateEintrag(dateKey, zeilenIndex, copiedText);
+    }
   };
   
   const copyTag = (dateKey) => {
@@ -6493,12 +6558,20 @@ function ProjectPlanningModule({ appState, updateState }) {
     }
   };
   
-  const pasteTag = (dateKey) => {
+  const pasteTag = async (dateKey) => {
     if (!copiedText) return;
     const texte = Array.isArray(copiedText) ? copiedText : [copiedText];
-    texte.forEach((text, index) => {
-      updateEintrag(dateKey, index, text);
-    });
+    for (let index = 0; index < texte.length; index++) {
+      const text = texte[index];
+      const existing = getEintragByZeile(dateKey, index);
+      if (existing) {
+        // FORENSISCH SICHER: Bestehender Eintrag wird überschrieben
+        console.log(`🔐 pasteTag[${index}]: Forensisch sicheres Überschreiben...`);
+        await updateEintragSecure(dateKey, index, text);
+      } else {
+        updateEintrag(dateKey, index, text);
+      }
+    }
   };
   
   // Ganzen Tag kopieren (alle Einträge inkl. Farben)
@@ -6873,136 +6946,101 @@ function ProjectPlanningModule({ appState, updateState }) {
         {(() => {
           return (
           <div className="space-y-3">
-            {/* Mitarbeiter-Liste */}
-            <div className="flex flex-wrap gap-2">
+            {/* TAP & PLACE INFO-BANNER */}
+            {tappedMitarbeiter && (
+              <div className="bg-blue-100 border-2 border-blue-400 rounded-lg px-3 py-2 flex items-center justify-between">
+                <span className="text-blue-800 font-medium text-sm">
+                  ✋ <strong>{tappedMitarbeiter}</strong> ausgewählt - Tippe auf eine Zelle zum Einfügen
+                </span>
+                <button 
+                  onClick={() => setTappedMitarbeiter(null)}
+                  className="px-2 py-1 bg-blue-500 text-white rounded text-xs font-bold hover:bg-blue-600"
+                >
+                  ✕ Abbrechen
+                </button>
+              </div>
+            )}
+            
+            {/* Mitarbeiter-Liste - TAP & PLACE optimiert für Mobile */}
+            <div className="flex flex-wrap gap-2 items-start">
+              {/* [+] NEUER MA Button */}
+              <button
+                onClick={() => {
+                  const name = window.prompt('Name des neuen Mitarbeiters:');
+                  if (name && name.trim()) {
+                    const trimmedName = name.trim();
+                    // Prüfe ob MA bereits existiert
+                    if (mitarbeiter.includes(trimmedName)) {
+                      alert(`"${trimmedName}" existiert bereits!`);
+                      return;
+                    }
+                    // Füge zur Zeiterfassung-Mitarbeiterliste hinzu
+                    updateState(prev => ({
+                      ...prev,
+                      zeiterfassung: {
+                        ...prev.zeiterfassung,
+                        mitarbeiter: [...(prev.zeiterfassung?.mitarbeiter || []), trimmedName].sort()
+                      }
+                    }));
+                  }
+                }}
+                className="px-3 py-2 bg-emerald-500 text-white rounded-lg font-bold text-sm hover:bg-emerald-600 transition-colors shadow-sm touch-manipulation"
+                title="Neuen Mitarbeiter hinzufügen"
+              >
+                [+] Neuer MA
+              </button>
+              
               {mitarbeiter.length === 0 ? (
-                <span className="text-sm text-slate-400">Keine Mitarbeiter in Zeiterfassung angelegt</span>
+                <span className="text-sm text-slate-400 py-2">Keine Mitarbeiter angelegt</span>
               ) : (
                 mitarbeiter.map((ma, i) => {
                   const maSkills = appState.planungSettings?.mitarbeiterSkills?.[ma] || [];
-                  const isSelected = selectedMitarbeiter === ma;
+                  const isSelectedForSkills = selectedMitarbeiter === ma;
+                  const isSelectedForPlace = tappedMitarbeiter === ma;
                   return (
                     <div key={i} className="flex flex-col">
+                      {/* MA-Button - TAP TO SELECT für Mobile */}
                       <div
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData('text/plain', ma);
-                          e.dataTransfer.setData('mitarbeiter', ma);
-                          e.dataTransfer.effectAllowed = 'all';
-                        }}
-                        onTouchStart={(e) => {
-                          // Mobile: Speichere MA für späteren Drop - kein preventDefault damit scroll funktioniert
-                          const touch = e.touches[0];
-                          // Speichere Startposition für Drag-Erkennung
-                          setDraggedEntry({ 
-                            mitarbeiterName: ma, 
-                            isMitarbeiterDrag: true,
-                            startX: touch.clientX,
-                            startY: touch.clientY,
-                            isDragging: false
-                          });
-                        }}
-                        onTouchMove={(e) => {
-                          if (!draggedEntry?.isMitarbeiterDrag) return;
-                          const touch = e.touches[0];
-                          
-                          // Prüfe ob genug Bewegung für Drag (> 10px)
-                          const dx = Math.abs(touch.clientX - (draggedEntry.startX || 0));
-                          const dy = Math.abs(touch.clientY - (draggedEntry.startY || 0));
-                          
-                          if (dx > 10 || dy > 10) {
-                            // Jetzt ist es ein echter Drag
-                            if (!draggedEntry.isDragging) {
-                              setDraggedEntry(prev => ({ ...prev, isDragging: true }));
-                              if (navigator.vibrate) navigator.vibrate(50);
-                            }
-                            
-                            // Finde Zelle unter dem Finger - suche div UND td mit data-drop-zone
-                            const element = document.elementFromPoint(touch.clientX, touch.clientY);
-                            if (element) {
-                              // Suche nach nächstem Element mit data-drop-zone (kann div oder td sein)
-                              let cell = element.closest('[data-drop-zone]');
-                              // Falls nicht gefunden, prüfe ob Element selbst data-drop-zone hat
-                              if (!cell && element.hasAttribute && element.hasAttribute('data-drop-zone')) {
-                                cell = element;
-                              }
-                              // Suche auch in parent elements
-                              if (!cell) {
-                                let parent = element.parentElement;
-                                while (parent && !cell) {
-                                  if (parent.hasAttribute && parent.hasAttribute('data-drop-zone')) {
-                                    cell = parent;
-                                  }
-                                  parent = parent.parentElement;
-                                }
-                              }
-                              
-                              if (cell && cell.dataset && cell.dataset.dropZone) {
-                                const [dateKey, zeile] = cell.dataset.dropZone.split('|');
-                                setDragOverCell({ dateKey, zeilenIndex: parseInt(zeile) });
-                              } else {
-                                setDragOverCell(null);
-                              }
-                            }
-                          }
-                        }}
-                        onTouchEnd={async (e) => {
-                          // Nur ausführen wenn wirklich gedraggt wurde
-                          if (!draggedEntry?.isMitarbeiterDrag || !draggedEntry?.isDragging || !dragOverCell) {
-                            setDraggedEntry(null);
-                            setDragOverCell(null);
-                            return;
-                          }
-                          
-                          e.preventDefault(); // Verhindere Click-Event nach Drag
-                          
-                          // Füge MA in Zelle ein
-                          const existing = getEintragByZeile(dragOverCell.dateKey, dragOverCell.zeilenIndex);
-                          if (existing?.text) {
-                            const alteMA = getMitarbeiterFromText(existing.text);
-                            if (!alteMA.includes(draggedEntry.mitarbeiterName)) {
-                              const projekt = getProjektName(existing.text);
-                              const neueMAListe = [...alteMA, draggedEntry.mitarbeiterName];
-                              const neuerText = projekt ? `${projekt}: ${neueMAListe.join(', ')}` : neueMAListe.join(', ');
-                              updateEintrag(dragOverCell.dateKey, dragOverCell.zeilenIndex, neuerText);
-                            }
-                          } else {
-                            // Leere Zelle - nur MA eintragen
-                            updateEintrag(dragOverCell.dateKey, dragOverCell.zeilenIndex, draggedEntry.mitarbeiterName);
-                          }
-                          if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
-                          setDraggedEntry(null);
-                          setDragOverCell(null);
-                        }}
                         onClick={() => {
-                          if (isSelected) {
+                          // TAP & PLACE: Toggle Auswahl für Einfügen
+                          if (isSelectedForPlace) {
+                            setTappedMitarbeiter(null);
+                          } else {
+                            setTappedMitarbeiter(ma);
+                            if (navigator.vibrate) navigator.vibrate(50);
+                          }
+                        }}
+                        className={`px-3 py-2 text-sm rounded-t-lg font-medium transition-all touch-manipulation ${
+                          isSelectedForPlace 
+                            ? 'bg-blue-500 text-white ring-2 ring-blue-300 scale-105' 
+                            : isSelectedForSkills
+                              ? 'bg-indigo-500 text-white' 
+                              : 'bg-green-100 text-green-700 hover:bg-green-200 active:bg-green-300'
+                        }`}
+                        title="Tippen zum Auswählen, dann Zelle antippen"
+                      >
+                        {isSelectedForPlace ? '✓ ' : '✋ '}{ma}
+                        {maSkills.length > 0 && (
+                          <span className="ml-1 text-[10px] opacity-70">({maSkills.length})</span>
+                        )}
+                      </div>
+                      {/* Skills-Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isSelectedForSkills) {
                             setSelectedMitarbeiter(null);
                           } else {
                             setSelectedMitarbeiter(ma);
                           }
                         }}
-                        className={`px-3 py-1.5 text-sm rounded-t-lg font-medium transition-colors cursor-grab active:cursor-grabbing ${
-                          isSelected 
-                            ? 'bg-indigo-500 text-white' 
-                            : 'bg-green-100 text-green-700 hover:bg-green-200'
-                        }`}
-                        title="Ziehen um Mitarbeiter einzufügen"
-                      >
-                        ✋ {ma}
-                        {maSkills.length > 0 && (
-                          <span className="ml-1 text-[10px] opacity-70">({maSkills.length})</span>
-                        )}
-                      </div>
-                      {/* Einfügen-Button */}
-                      <button
-                        onClick={() => insertToActiveCell(ma)}
                         className={`px-2 py-0.5 text-[10px] rounded-b-lg transition-colors ${
-                          isSelected 
+                          isSelectedForSkills 
                             ? 'bg-indigo-400 text-white hover:bg-indigo-600' 
                             : 'bg-green-50 text-green-600 hover:bg-green-100'
                         }`}
                       >
-                        → Einfügen
+                        ⚙️ Skills
                       </button>
                     </div>
                   );
@@ -7353,30 +7391,55 @@ function ProjectPlanningModule({ appState, updateState }) {
                       <td 
                         key={dayIndex}
                         data-drop-zone={`${dateKey}|${slotIndex}`}
-                        draggable={hatInhalt}
-                        onDragStart={(e) => hatInhalt && handleDragStart(e, eintrag, dateKey, slotIndex)}
-                        onDragOver={(e) => handleDragOver(e, dateKey, slotIndex)}
+                        draggable={hatInhalt && !tappedMitarbeiter}
+                        onDragStart={(e) => hatInhalt && !tappedMitarbeiter && handleDragStart(e, eintrag, dateKey, slotIndex)}
+                        onDragOver={(e) => !tappedMitarbeiter && handleDragOver(e, dateKey, slotIndex)}
                         onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, dateKey, slotIndex)}
+                        onDrop={(e) => !tappedMitarbeiter && handleDrop(e, dateKey, slotIndex)}
                         onTouchStart={(e) => {
+                          // Bei Tap & Place: Kein Drag starten
+                          if (tappedMitarbeiter) return;
                           if (hatInhalt) {
                             handleTouchStart(e, eintrag, dateKey, slotIndex);
                           }
                         }}
                         onTouchMove={(e) => {
-                          if (draggedEntry) {
+                          if (draggedEntry && !tappedMitarbeiter) {
                             handleTouchMove(e, visibleDates, zeitraster.length);
                           }
                         }}
                         onTouchEnd={(e) => {
-                          if (draggedEntry) {
+                          if (draggedEntry && !tappedMitarbeiter) {
                             handleTouchEnd(e);
                           }
                         }}
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           // Ignoriere Klicks auf Buttons/Inputs
                           if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
                           if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                          
+                          // TAP & PLACE: Wenn MA ausgewählt, füge ihn ein (FORENSISCH SICHER)
+                          if (tappedMitarbeiter) {
+                            const existing = getEintragByZeile(dateKey, slotIndex);
+                            if (existing?.text) {
+                              // Zelle hat bereits Inhalt - MA hinzufügen (FORENSISCH SICHER)
+                              const alteMA = getMitarbeiterFromText(existing.text);
+                              if (!alteMA.includes(tappedMitarbeiter)) {
+                                console.log('🔐 Wochenansicht td onClick: Forensisch sichere Einfügung...');
+                                const projekt = getProjektName(existing.text);
+                                const neueMAListe = [...alteMA, tappedMitarbeiter];
+                                const neuerText = projekt ? `${projekt}: ${neueMAListe.join(', ')}` : neueMAListe.join(', ');
+                                await updateEintragSecure(dateKey, slotIndex, neuerText);
+                              }
+                            } else {
+                              // Leere Zelle - nur MA eintragen (neuer Eintrag, kein secureDelete nötig)
+                              updateEintrag(dateKey, slotIndex, tappedMitarbeiter);
+                            }
+                            if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                            // MA bleibt ausgewählt für weitere Einfügungen
+                            return;
+                          }
+                          
                           // Klick auf leere Zelle = Projekt hinzufügen
                           if (!hatInhalt) {
                             setShowProjektModal({ dateKey, zeilenIndex: slotIndex });
@@ -7389,9 +7452,42 @@ function ProjectPlanningModule({ appState, updateState }) {
                           'bg-white hover:bg-slate-50'
                         } ${isActive ? 'ring-2 ring-inset ring-orange-400' : ''} ${
                           isDragOver ? 'ring-2 ring-inset ring-green-400 bg-green-50 scale-[1.02]' : ''
-                        } ${hatInhalt ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                        } ${hatInhalt && !tappedMitarbeiter ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         style={{ backgroundColor: hatInhalt && !isDragOver ? getZeilenFarbe(eintrag) : undefined, position: 'relative' }}
                       >
+                        {/* TAP & PLACE OVERLAY - dezent wie in Monatsansicht */}
+                        {tappedMitarbeiter && (
+                          <div 
+                            className="absolute inset-0 z-30 flex items-center justify-center rounded cursor-pointer hover:bg-slate-100 transition-colors"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              console.log('🔐 TAP & PLACE: Forensisch sichere Einfügung...');
+                              const existing = getEintragByZeile(dateKey, slotIndex);
+                              if (existing?.text) {
+                                // Zelle hat bereits Inhalt - MA hinzufügen (FORENSISCH SICHER)
+                                const alteMA = getMitarbeiterFromText(existing.text);
+                                if (!alteMA.includes(tappedMitarbeiter)) {
+                                  const projekt = getProjektName(existing.text);
+                                  const neueMAListe = [...alteMA, tappedMitarbeiter];
+                                  const neuerText = projekt ? `${projekt}: ${neueMAListe.join(', ')}` : neueMAListe.join(', ');
+                                  await updateEintragSecure(dateKey, slotIndex, neuerText);
+                                  if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                                } else {
+                                  // MA ist schon drin - Feedback
+                                  if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
+                                }
+                              } else {
+                                // Leere Zelle - nur MA eintragen (neuer Eintrag, kein secureDelete nötig)
+                                updateEintrag(dateKey, slotIndex, tappedMitarbeiter);
+                                if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                              }
+                            }}
+                          >
+                            <span className="text-slate-400 text-[10px]">
+                              + {tappedMitarbeiter}
+                            </span>
+                          </div>
+                        )}
                         {/* MOBILE DROP-ZONE OVERLAY - fängt Touch-Events ab wenn Drag aktiv */}
                         {(draggedEntry?.isMitarbeiterDrag || draggedEntry?.isAuftragDrag) && (
                           <div 
@@ -7410,7 +7506,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                           {/* Editierbare Zeit (überschreibt Standard) */}
                           <input
                             type="text"
-                            value={eintrag?.stunden || `${slot.von.replace(':00','')}-${slot.bis.replace(':00','')}`}
+                            value={eintrag?.stunden || `${slot.von} - ${slot.bis}`}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => {
                               updateState(prev => {
@@ -7452,7 +7548,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                             )}
                           </div>
                           
-                          {/* Mitarbeiter UNTEREINANDER MIT SKILLS */}
+                          {/* Mitarbeiter UNTEREINANDER MIT SKILLS + ENTFERNEN-BUTTON */}
                           {hatInhalt && (() => {
                             const mitarbeiterListe = getMitarbeiterFromText(eintrag.text);
                             if (mitarbeiterListe.length === 0) return null;
@@ -7461,7 +7557,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                                 {mitarbeiterListe.map((ma, maIdx) => {
                                   const skills = getSkillsForMitarbeiter(ma);
                                   return (
-                                    <div key={maIdx} className="flex items-center gap-1 text-[10px] text-slate-600 flex-wrap">
+                                    <div key={maIdx} className="group/ma flex items-center gap-1 text-[10px] text-slate-600 flex-wrap">
                                       <span className="w-1 h-1 bg-green-500 rounded-full flex-shrink-0"></span>
                                       <span className="font-semibold">{ma}</span>
                                       {skills.length > 0 && (
@@ -7469,6 +7565,28 @@ function ProjectPlanningModule({ appState, updateState }) {
                                           {skills.slice(0, 3).join(' · ')}{skills.length > 3 ? '…' : ''}
                                         </span>
                                       )}
+                                      {/* ENTFERNEN-BUTTON - FORENSISCH SICHER */}
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          // 🔐 MA FORENSISCH SICHER aus der Zelle entfernen
+                                          console.log(`🔐 MA "${ma}" wird forensisch sicher entfernt...`);
+                                          const verbleibendeMA = mitarbeiterListe.filter(m => m !== ma);
+                                          const projekt = getProjektName(eintrag.text);
+                                          if (verbleibendeMA.length > 0) {
+                                            const neuerText = projekt ? `${projekt}: ${verbleibendeMA.join(', ')}` : verbleibendeMA.join(', ');
+                                            await updateEintragSecure(dateKey, slotIndex, neuerText);
+                                          } else {
+                                            // Letzter MA - nur Projekt behalten oder Zelle forensisch leeren
+                                            await updateEintragSecure(dateKey, slotIndex, projekt || '');
+                                          }
+                                          if (navigator.vibrate) navigator.vibrate([30]);
+                                        }}
+                                        className="ml-auto w-5 h-5 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors sm:opacity-0 sm:group-hover/ma:opacity-100"
+                                        title={`${ma} forensisch sicher entfernen`}
+                                      >
+                                        ✕
+                                      </button>
                                     </div>
                                   );
                                 })}
@@ -7749,16 +7867,12 @@ function ProjectPlanningModule({ appState, updateState }) {
                   )}
                   
                   <div 
-                    className={`min-h-[80px] border-r border-b transition-all cursor-pointer ${
+                    className={`min-h-[80px] border-r border-b transition-all relative ${
                       feiertag ? 'bg-red-50 border-red-200' :
                       isToday ? 'bg-orange-50 border-orange-200' : 
                       isWeekend ? 'bg-slate-200/60 border-slate-300' : 
                       'bg-white hover:bg-slate-50 border-slate-100'
                     }`}
-                  onClick={() => {
-                    // Klick auf Zelle: Modal zum Hinzufügen öffnen
-                    setShowProjektModal({ dateKey });
-                  }}
                 >
                   {/* Tag-Header */}
                   <div className="flex items-center justify-between px-1 py-1 border-b border-slate-100">
@@ -7766,11 +7880,18 @@ function ProjectPlanningModule({ appState, updateState }) {
                       {isToday && <span className="inline-block w-5 h-5 bg-orange-500 text-white rounded-full text-center leading-5 text-[10px]">{d.getDate()}</span>}
                       {!isToday && d.getDate()}
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5 opacity-40 hover:opacity-100 transition-opacity">
                       {feiertag && <span className="text-[8px] text-red-400 truncate max-w-[40px]" title={feiertag}>{feiertag.substring(0,6)}..</span>}
-                      {!feiertag && eintraege.length === 0 && <span className="text-slate-300 text-[9px]">+</span>}
-                      {/* Secure Delete Button für alle Tageseinträge */}
-                      {eintraege.length > 0 && (
+                      {/* + Projekt Button - dezent */}
+                      {!tappedMitarbeiter && (
+                        <button
+                          onClick={() => setShowProjektModal({ dateKey })}
+                          className="text-slate-300 hover:text-slate-500 text-[9px]"
+                          title="Projekt hinzufügen"
+                        >+</button>
+                      )}
+                      {/* Secure Delete Button - dezent */}
+                      {eintraege.length > 0 && !tappedMitarbeiter && (
                         <button
                           onClick={async (e) => {
                             e.stopPropagation();
@@ -7780,7 +7901,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                               }
                             }
                           }}
-                          className="text-[9px] text-red-400 hover:text-red-600 hover:bg-red-50 rounded px-0.5"
+                          className="text-[8px] text-slate-300 hover:text-red-500"
                           title="Alle Einträge sicher löschen (3x überschreiben)"
                         >🗑</button>
                       )}
@@ -7789,7 +7910,33 @@ function ProjectPlanningModule({ appState, updateState }) {
                   
                   {/* Projekte - horizontal nach Projektname für durchgehende Balken im Monat */}
                   <div className="p-0.5 space-y-0.5">
-                    {projektListe.map((projektName, zeile) => {
+                    {/* LEERE ZELLE: Projekt wählen - gestrichelte Umrandung wie Drop-Zones */}
+                    {eintraege.length === 0 && !tappedMitarbeiter && (
+                      <div 
+                        className="h-7 sm:h-6 flex items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300 transition-colors cursor-pointer"
+                        onClick={() => setShowProjektModal({ dateKey })}
+                      >
+                        <span className="text-slate-300 hover:text-slate-500 text-[10px]">
+                          + Projekt
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* TAP & PLACE: Wenn MA ausgewählt und leere Zelle */}
+                    {tappedMitarbeiter && eintraege.length === 0 && (
+                      <div 
+                        className="h-7 sm:h-6 flex items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50/50 hover:bg-slate-100 transition-colors cursor-pointer"
+                        onClick={() => {
+                          updateEintrag(dateKey, 0, tappedMitarbeiter);
+                          if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                        }}
+                      >
+                        <span className="text-slate-400 text-[10px]">
+                          + {tappedMitarbeiter}
+                        </span>
+                      </div>
+                    )}
+                                        {projektListe.map((projektName, zeile) => {
                       const eintrag = projektMap[projektName];
                       const isDragOverHere = dragOverCell?.dateKey === dateKey && dragOverCell?.zeilenIndex === zeile;
                       
@@ -7802,13 +7949,30 @@ function ProjectPlanningModule({ appState, updateState }) {
                             onDragOver={(e) => handleDragOver(e, dateKey, zeile)}
                             onDragLeave={handleDragLeave}
                             onDrop={(e) => handleDrop(e, dateKey, zeile)}
-                            className={`h-7 sm:h-6 border border-dashed rounded transition-all relative ${
+                            className={`h-7 sm:h-6 border border-dashed rounded transition-all relative cursor-pointer ${
                               isDragOverHere 
                                 ? 'border-green-400 bg-green-50 ring-1 ring-green-300 scale-105' 
-                                : 'border-slate-200 bg-slate-50/50'
+                                : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300'
                             }`}
-                            title={`${projektName} - heute nicht (hierher ziehen zum Hinzufügen)`}
+                            title={tappedMitarbeiter ? `Tippen um ${tappedMitarbeiter} hier einzufügen` : `${projektName} - heute nicht (hierher ziehen zum Hinzufügen)`}
                           >
+                            {/* TAP & PLACE OVERLAY - KLICKBAR für leere Zellen */}
+                            {tappedMitarbeiter && (
+                              <div 
+                                className="absolute inset-0 z-30 rounded flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // Neuer Eintrag - kein secureDelete nötig
+                                  const neuerText = `${projektName}: ${tappedMitarbeiter}`;
+                                  updateEintrag(dateKey, zeile, neuerText);
+                                  if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                                }}
+                              >
+                                <span className="text-slate-400 text-[9px]">
+                                  + {tappedMitarbeiter}
+                                </span>
+                              </div>
+                            )}
                             {/* MOBILE DROP-ZONE OVERLAY */}
                             {(draggedEntry?.isMitarbeiterDrag || draggedEntry?.isAuftragDrag) && (
                               <div 
@@ -7827,23 +7991,36 @@ function ProjectPlanningModule({ appState, updateState }) {
                         <div 
                           key={zeile}
                           data-drop-zone={`${dateKey}|${zeile}`}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, eintrag, dateKey, zeile)}
+                          draggable={!tappedMitarbeiter}
+                          onDragStart={(e) => !tappedMitarbeiter && handleDragStart(e, eintrag, dateKey, zeile)}
                           onDragOver={(e) => handleDragOver(e, dateKey, zeile)}
                           onDragLeave={handleDragLeave}
                           onDrop={(e) => handleDrop(e, dateKey, zeile)}
-                          onTouchStart={(e) => handleTouchStart(e, eintrag, dateKey, zeile)}
+                          onTouchStart={(e) => !tappedMitarbeiter && handleTouchStart(e, eintrag, dateKey, zeile)}
                           onTouchMove={(e) => {
-                            if (draggedEntry) {
+                            if (draggedEntry && !tappedMitarbeiter) {
                               handleTouchMove(e, visibleDates, projektListe.length);
                             }
                           }}
                           onTouchEnd={(e) => {
-                            if (draggedEntry) {
+                            if (draggedEntry && !tappedMitarbeiter) {
                               handleTouchEnd(e);
                             }
                           }}
-                          className={`group flex items-center h-7 sm:h-6 text-[12px] sm:text-[11px] rounded font-medium transition-all touch-manipulation overflow-visible relative ${
+                          onClick={async () => {
+                            // TAP & PLACE: Wenn MA ausgewählt, füge ihn zum Projekt hinzu (FORENSISCH SICHER)
+                            if (tappedMitarbeiter) {
+                              const alteMA = getMitarbeiterFromText(eintrag.text);
+                              if (!alteMA.includes(tappedMitarbeiter)) {
+                                console.log('🔐 Monatsansicht onClick: Forensisch sichere Einfügung...');
+                                const neueMAListe = [...alteMA, tappedMitarbeiter];
+                                const neuerText = `${projektName}: ${neueMAListe.join(', ')}`;
+                                await updateEintragSecure(dateKey, zeile, neuerText);
+                                if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                              }
+                            }
+                          }}
+                          className={`group flex items-center h-7 sm:h-6 text-[12px] sm:text-[11px] rounded font-medium transition-all touch-manipulation overflow-visible relative cursor-pointer ${
                             isDragOverHere 
                               ? 'ring-2 ring-green-400 scale-105 bg-green-50' 
                               : 'hover:ring-1 hover:ring-slate-300'
@@ -7853,6 +8030,30 @@ function ProjectPlanningModule({ appState, updateState }) {
                             borderLeft: `3px solid ${getZeilenFarbeSolid(eintrag) || '#e2e8f0'}` 
                           }}
                         >
+                          {/* TAP & PLACE OVERLAY - dezent */}
+                          {tappedMitarbeiter && (
+                            <div 
+                              className="absolute inset-0 z-30 rounded flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const alteMA = getMitarbeiterFromText(eintrag.text);
+                                if (!alteMA.includes(tappedMitarbeiter)) {
+                                  console.log('🔐 Monatsansicht Overlay: Forensisch sichere Einfügung...');
+                                  const neueMAListe = [...alteMA, tappedMitarbeiter];
+                                  const neuerText = `${projektName}: ${neueMAListe.join(', ')}`;
+                                  await updateEintragSecure(dateKey, zeile, neuerText);
+                                  if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                                } else {
+                                  // MA ist schon drin
+                                  if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
+                                }
+                              }}
+                            >
+                              <span className="text-slate-400 text-[10px]">
+                                + {tappedMitarbeiter}
+                              </span>
+                            </div>
+                          )}
                           {/* MOBILE DROP-ZONE OVERLAY */}
                           {(draggedEntry?.isMitarbeiterDrag || draggedEntry?.isAuftragDrag) && (
                             <div 
@@ -7954,6 +8155,18 @@ function ProjectPlanningModule({ appState, updateState }) {
                         </div>
                       );
                     })}
+                    
+                    {/* Zusätzliche leere Zeile unter den Projekten - zum Hinzufügen weiterer Projekte */}
+                    {eintraege.length > 0 && (
+                      <div 
+                        className="h-7 sm:h-6 flex items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300 transition-colors cursor-pointer"
+                        onClick={() => setShowProjektModal({ dateKey })}
+                      >
+                        <span className="text-slate-300 hover:text-slate-500 text-[10px]">
+                          +
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 </React.Fragment>
@@ -8356,14 +8569,15 @@ function ProjectPlanningModule({ appState, updateState }) {
                     return;
                   }
                   
-                  // Auftrag in Zelle einfügen
+                  // Auftrag in Zelle einfügen (FORENSISCH SICHER bei Änderungen)
                   const existing = getEintragByZeile(dragOverCell.dateKey, dragOverCell.zeilenIndex);
                   if (existing?.text) {
-                    // Auftrag zum bestehenden Projekt hinzufügen
+                    // Auftrag zum bestehenden Projekt hinzufügen (FORENSISCH SICHER)
+                    console.log('🔐 Auftrag TouchEnd: Forensisch sichere Einfügung...');
                     const neuerText = existing.text + ' + ' + draggedEntry.auftragText;
-                    updateEintrag(dragOverCell.dateKey, dragOverCell.zeilenIndex, neuerText);
+                    await updateEintragSecure(dragOverCell.dateKey, dragOverCell.zeilenIndex, neuerText);
                   } else {
-                    // Neues Projekt anlegen
+                    // Neues Projekt anlegen (kein secureDelete nötig)
                     updateEintrag(dragOverCell.dateKey, dragOverCell.zeilenIndex, draggedEntry.auftragText);
                   }
                   
