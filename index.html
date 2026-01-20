@@ -60,9 +60,12 @@ oder Einbindung in eigene Projekte ist nicht gestattet.
      * ═══════════════════════════════════════════════════════════════════════════════ */
     .start-modal-overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(6px);
+      background: transparent;
       z-index: 999999; display: flex; align-items: center; justify-content: center;
       padding: 16px; opacity: 1; transition: opacity 0.3s ease;
+    }
+    .start-modal-overlay .vault-blur-background {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     }
     .start-modal-overlay.hidden { opacity: 0; pointer-events: none; display: none !important; }
     .start-modal {
@@ -73,6 +76,8 @@ oder Einbindung in eigene Projekte ist nicht gestattet.
       animation: modalSlideIn 0.3s ease;
       max-height: 90vh;
       overflow-y: auto;
+      position: relative;
+      z-index: 2;
     }
     @keyframes modalSlideIn {
       from { transform: translateY(-20px) scale(0.97); opacity: 0; }
@@ -376,12 +381,90 @@ oder Einbindung in eigene Projekte ist nicht gestattet.
         padding-top: 56px !important; /* Platz für mobile-header */
       }
     }
+    
+    /* ═══════════════════════════════════════════════════════════════════════════════
+     * BLUR BACKGROUND - Verschwommene Willkommensseite als Hintergrund
+     * ═══════════════════════════════════════════════════════════════════════════════ */
+    
+    .vault-blur-background {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 99998;
+      overflow: hidden;
+    }
+    
+    .vault-blur-background .blur-content {
+      width: 100%;
+      height: 100%;
+      filter: blur(4px) brightness(1.0) saturate(0.95);
+      transform: scale(1.03);
+      pointer-events: none;
+      background: linear-gradient(135deg, #e2e8f0 0%, #f1f5f9 100%);
+    }
+    
+    .vault-blur-background .blur-content-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 80px 40px;
+    }
+    
+    .vault-blur-card {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    
+    .vault-blur-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    
+    @media (max-width: 768px) {
+      .vault-blur-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body class="bg-slate-100 font-sans antialiased">
 
 <!-- Start-Modal - Datenschutz & Sicherheitshinweis -->
 <div id="start-modal-overlay" class="start-modal-overlay">
+  <!-- Verschwommene Willkommensseite als Hintergrund -->
+  <div class="vault-blur-background" style="z-index: 1;">
+    <div class="blur-content">
+      <div class="blur-content-inner">
+        <div style="text-align: center; margin-bottom: 48px;">
+          <h1 style="font-size: 28px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">
+            Willkommen
+          </h1>
+          <p style="color: #64748b;">Wählen Sie einen Bereich, um zu starten.</p>
+        </div>
+        <div class="vault-blur-grid">
+          <div class="vault-blur-card" style="border-left: 6px solid #0d9488;">
+            <div style="font-size: 36px; margin-bottom: 12px;">📄</div>
+            <h3 style="font-size: 18px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">Rechnungen & Angebote</h3>
+            <p style="color: #64748b; font-size: 13px;">Erstellen, verwalten und PDF-Export</p>
+          </div>
+          <div class="vault-blur-card" style="border-left: 6px solid #f97316;">
+            <div style="font-size: 36px; margin-bottom: 12px;">⏱️</div>
+            <h3 style="font-size: 18px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">Zeiterfassung</h3>
+            <p style="color: #64748b; font-size: 13px;">Stunden dokumentieren und Berichte</p>
+          </div>
+          <div class="vault-blur-card" style="border-left: 6px solid #6366f1;">
+            <div style="font-size: 36px; margin-bottom: 12px;">📋</div>
+            <h3 style="font-size: 18px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">Einsatzplan</h3>
+            <p style="color: #64748b; font-size: 13px;">Mitarbeiter und Projekte planen</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Das eigentliche Modal -->
   <div class="start-modal">
     <div class="start-modal-header">
       <div class="shield-icon">🛡️</div>
@@ -1068,7 +1151,7 @@ function mapCSVToKunden(rows, headers) {
     const name = vorname ? `${vorname} ${nachname}`.trim() : nachname;
     
     return {
-      id: Date.now() + idx,
+      id: crypto.randomUUID(), // Forensisch sicher
       anrede: findField(row, anredeFields) || 'Organisation',
       name: sanitizeText(name),
       strasse: sanitizeText(findField(row, strasseFields)),
@@ -1104,7 +1187,7 @@ function mapCSVToMaterial(rows, headers) {
     }
     
     return {
-      id: Date.now() + idx,
+      id: crypto.randomUUID(), // Forensisch sicher
       name: sanitizeText(findField(row, nameFields)),
       einheit: sanitizeText(findField(row, einheitFields)) || 'Stk',
       preis: preis || '0,00'
@@ -1878,13 +1961,50 @@ function showVaultPasswordDialog(isNewVault = false, allowStammdatenImport = fal
     // Entferne möglicherweise existierende alte Overlays
     const existingOverlay = document.querySelector('.vault-overlay');
     if (existingOverlay) existingOverlay.remove();
+    const existingBlur = document.querySelector('.vault-blur-background');
+    if (existingBlur) existingBlur.remove();
     
     const dialogId = 'vault-' + Date.now();
+    
+    // Erstelle verschwommenen Hintergrund mit Willkommensseite
+    const blurBg = document.createElement('div');
+    blurBg.className = 'vault-blur-background';
+    blurBg.innerHTML = `
+      <div class="blur-content">
+        <div class="blur-content-inner">
+          <div style="text-align: center; margin-bottom: 48px;">
+            <h1 style="font-size: 28px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">
+              Willkommen zurück
+            </h1>
+            <p style="color: #64748b;">Wählen Sie einen Bereich, um zu starten.</p>
+          </div>
+          <div class="vault-blur-grid">
+            <div class="vault-blur-card" style="border-left: 6px solid #0d9488;">
+              <div style="font-size: 36px; margin-bottom: 12px;">📄</div>
+              <h3 style="font-size: 18px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">Rechnungen & Angebote</h3>
+              <p style="color: #64748b; font-size: 13px;">Erstellen, verwalten und PDF-Export</p>
+            </div>
+            <div class="vault-blur-card" style="border-left: 6px solid #f97316;">
+              <div style="font-size: 36px; margin-bottom: 12px;">⏱️</div>
+              <h3 style="font-size: 18px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">Zeiterfassung</h3>
+              <p style="color: #64748b; font-size: 13px;">Stunden dokumentieren und Berichte</p>
+            </div>
+            <div class="vault-blur-card" style="border-left: 6px solid #6366f1;">
+              <div style="font-size: 36px; margin-bottom: 12px;">📋</div>
+              <h3 style="font-size: 18px; font-weight: bold; color: #1e293b; margin-bottom: 8px;">Einsatzplan</h3>
+              <p style="color: #64748b; font-size: 13px;">Mitarbeiter und Projekte planen</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(blurBg);
+    
     const overlay = document.createElement('div');
     overlay.className = 'vault-overlay';
     overlay.style.cssText = `
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.95); display: flex; align-items: center;
+      background: transparent; display: flex; align-items: center;
       justify-content: center; z-index: 99999;
     `;
     overlay.innerHTML = `
@@ -2014,6 +2134,7 @@ function showVaultPasswordDialog(isNewVault = false, allowStammdatenImport = fal
           const buffer = await file.arrayBuffer();
           const stammdaten = await importStammdaten(buffer, importPw);
           overlay.remove();
+          blurBg.remove();
           resolve({ type: 'stammdaten', data: stammdaten, password: pwInput.value || importPw });
         } catch (err) {
           alert('Import fehlgeschlagen: ' + err.message);
@@ -2022,7 +2143,8 @@ function showVaultPasswordDialog(isNewVault = false, allowStammdatenImport = fal
     }
     
     confirmBtn.addEventListener('click', () => { 
-      overlay.remove(); 
+      overlay.remove();
+      blurBg.remove();
       resolve({ type: 'password', password: pwInput.value }); 
     });
   });
@@ -2835,10 +2957,36 @@ function VaultProvider({ children }) {
     
     setSaveStatus('saving');
     try {
-      const stateWithMeta = {
+      // FORENSISCHE SICHERHEIT: Arrays sortieren vor dem Speichern
+      // Damit ist die physikalische Reihenfolge im JSON immer konsistent
+      // und nachträglich eingefügte Einträge sind nicht erkennbar
+      const sortedState = {
         ...stateToSave,
+        // Rechnungen/Angebote nach Datum sortieren (älteste zuerst)
+        rechnungen: [...(stateToSave.rechnungen || [])].sort((a, b) => {
+          const dateA = new Date(a.datum || a.rechnungsdatum || '1970-01-01');
+          const dateB = new Date(b.datum || b.rechnungsdatum || '1970-01-01');
+          return dateA - dateB;
+        }),
+        // Kunden alphabetisch sortieren
+        kunden: [...(stateToSave.kunden || [])].sort((a, b) => 
+          (a.Organisation || a.name || '').localeCompare(b.Organisation || b.name || '')
+        ),
+        // Material alphabetisch sortieren
+        material: [...(stateToSave.material || [])].sort((a, b) => 
+          (a.Name || a.name || '').localeCompare(b.Name || b.name || '')
+        ),
+        // Planung nach Datum sortieren
+        planung: [...(stateToSave.planung || [])].sort((a, b) => {
+          if (a.datum !== b.datum) return (a.datum || '').localeCompare(b.datum || '');
+          return (a.zeilenIndex || 0) - (b.zeilenIndex || 0);
+        })
+      };
+      
+      const stateWithMeta = {
+        ...sortedState,
         meta: {
-          ...stateToSave.meta,
+          ...sortedState.meta,
           lastModified: new Date().toISOString()
         }
       };
@@ -3655,25 +3803,58 @@ function LoginScreen() {
     handleRetry();
   };
   
+  // Nur bei Fehler etwas anzeigen - der Passwort-Dialog hat seinen eigenen Blur-Hintergrund
+  if (!error) {
+    return null;
+  }
+  
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0, left: 0, right: 0, bottom: 0,
-      background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'column',
-      color: 'white'
-    }}>
-      <div style={{ fontSize: '60px', marginBottom: '20px' }}>🔐</div>
-      <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '10px' }}>
-        Secure Vault
-      </h1>
-      <p style={{ color: '#94a3b8', fontSize: '14px' }}>
-        {isProcessing ? 'Verarbeite...' : 'Warte auf Eingabe...'}
-      </p>
-      {error && (
+    <div className="vault-blur-background">
+      <div className="blur-content">
+        <div className="blur-content-inner">
+          <div style={{ textAlign: 'center', marginBottom: '48px' }}>
+            <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: '#1e293b', marginBottom: '8px' }}>
+              Willkommen zurück
+            </h1>
+            <p style={{ color: '#64748b' }}>Wählen Sie einen Bereich, um zu starten.</p>
+          </div>
+          <div className="vault-blur-grid">
+            <div className="vault-blur-card" style={{ borderLeft: '6px solid #0d9488' }}>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📄</div>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b', marginBottom: '8px' }}>Rechnungen & Angebote</h3>
+              <p style={{ color: '#64748b', fontSize: '13px' }}>Erstellen, verwalten und PDF-Export</p>
+            </div>
+            <div className="vault-blur-card" style={{ borderLeft: '6px solid #f97316' }}>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>⏱️</div>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b', marginBottom: '8px' }}>Zeiterfassung</h3>
+              <p style={{ color: '#64748b', fontSize: '13px' }}>Stunden dokumentieren und Berichte</p>
+            </div>
+            <div className="vault-blur-card" style={{ borderLeft: '6px solid #6366f1' }}>
+              <div style={{ fontSize: '36px', marginBottom: '12px' }}>📋</div>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1e293b', marginBottom: '8px' }}>Einsatzplan</h3>
+              <p style={{ color: '#64748b', fontSize: '13px' }}>Mitarbeiter und Projekte planen</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Fehler-Overlay */}
+      <div style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(15, 23, 42, 0.75)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'column',
+        color: 'white',
+        zIndex: 99999
+      }}>
+        <div style={{ fontSize: '60px', marginBottom: '20px' }}>🔐</div>
+        <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '10px' }}>
+          Secure Vault
+        </h1>
         <div style={{ marginTop: '20px', textAlign: 'center' }}>
           <p style={{ color: '#ef4444', fontSize: '14px', marginBottom: '15px' }}>
             ⚠️ {error}
@@ -3694,7 +3875,7 @@ function LoginScreen() {
             🔄 Erneut versuchen
           </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -3977,7 +4158,7 @@ function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateIn
       // 2. DOPPELT: Auch in separate monatsListe speichern (für Monatsauswertung)
       const neueMonatsEintraege = entries.map(e => ({
         ...e,
-        id: Date.now() + Math.random(),
+        id: crypto.randomUUID(),
         projektName: projekt.name,
         projektId: projekt.id,
         datum: date,
@@ -4329,7 +4510,7 @@ function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateIn
                       ...prev,
                       material: [
                         ...(prev.material || []),
-                        { id: Date.now(), Name: name, Verkaufspreis: preis, Einheit: einheit }
+                        { id: crypto.randomUUID(), Name: name, Verkaufspreis: preis, Einheit: einheit }
                       ]
                     }));
                     
@@ -4601,7 +4782,7 @@ function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateIn
                       // Facharbeiter-Stunden als Position
                       if (stundenF > 0) {
                         neuePositionen.push({
-                          id: Date.now() + Math.random(),
+                          id: crypto.randomUUID(),
                           name: beidTypenVorhanden 
                             ? `Facharbeiter-Stunden (Projekt: ${activeProject?.name || 'Unbekannt'})`
                             : `Arbeitsstunden (Projekt: ${activeProject?.name || 'Unbekannt'})`,
@@ -4614,7 +4795,7 @@ function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateIn
                       // Helfer-Stunden als Position
                       if (stundenH > 0) {
                         neuePositionen.push({
-                          id: Date.now() + Math.random() + 1,
+                          id: crypto.randomUUID(),
                           name: beidTypenVorhanden
                             ? `Helfer-Stunden (Projekt: ${activeProject?.name || 'Unbekannt'})`
                             : `Arbeitsstunden (Projekt: ${activeProject?.name || 'Unbekannt'})`,
@@ -4635,7 +4816,7 @@ function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateIn
                               m.Name.toLowerCase() === matName.toLowerCase()
                             );
                             neuePositionen.push({
-                              id: Date.now() + Math.random() + idx + 10,
+                              id: crypto.randomUUID(),
                               name: matName,
                               einheit: einheit,
                               menge: String(menge).replace(',', '.'),
@@ -4643,7 +4824,7 @@ function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateIn
                             });
                           } else {
                             neuePositionen.push({
-                              id: Date.now() + Math.random() + idx + 100,
+                              id: crypto.randomUUID(),
                               name: item,
                               einheit: 'Stk',
                               menge: '1',
@@ -5730,14 +5911,37 @@ function ProjectPlanningModule({ appState, updateState }) {
   const [toolbarTab, setToolbarTab] = useState('kunden');
   const [selectedMitarbeiter, setSelectedMitarbeiter] = useState(null); // Ausgewählter MA für Skills
   const [tappedMitarbeiter, setTappedMitarbeiter] = useState(null); // TAP & PLACE: Ausgewählter MA zum Einfügen
+  const [tappedAuftrag, setTappedAuftrag] = useState(null); // TAP & PLACE: Ausgewählter Auftrag zum Einfügen
   const [copiedText, setCopiedText] = useState(null);
   const [kundenSuche, setKundenSuche] = useState('');
   const [showFarbModal, setShowFarbModal] = useState(null); // { dateKey, zeilenIndex }
+  const [showVerfModal, setShowVerfModal] = useState(null); // { dateKey, maListe } - für Verfügbarkeit-Auswahl
   const [selectedProjekt, setSelectedProjekt] = useState(null); // { dateKey, projektName, eintrag } - für Monatsansicht
   const [showProjektModal, setShowProjektModal] = useState(null); // { dateKey } - für Projekt hinzufügen in Monatsansicht
   const [neuesProjekt, setNeuesProjekt] = useState(''); // Eingabe für neues Projekt
   const [projektSuche, setProjektSuche] = useState(''); // Suche im Modal
   const [pendingProjekt, setPendingProjekt] = useState(null); // { dateKey, text } - wartet auf Farbauswahl
+  
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // SPEICHER-ÜBERWACHUNG - Für Privacy Footer
+  // ═══════════════════════════════════════════════════════════════════════════════
+  const speicherInfo = React.useMemo(() => {
+    const jsonString = JSON.stringify(appState);
+    const bytesUsed = new TextEncoder().encode(jsonString).length;
+    const overhead = 16 + 12 + 16 + 4;
+    const maxDataSize = 5 * 1024 * 1024 - overhead; // 5MB
+    const prozent = Math.min(100, (bytesUsed / maxDataSize) * 100);
+    const freiKB = Math.max(0, (maxDataSize - bytesUsed) / 1024);
+    const belegtKB = bytesUsed / 1024;
+    return {
+      bytesUsed, maxDataSize,
+      prozent: prozent.toFixed(1),
+      freiKB: freiKB.toFixed(0),
+      belegtKB: belegtKB.toFixed(0),
+      istKritisch: prozent > 90,
+      istWarnung: prozent > 75
+    };
+  }, [appState]);
   
   // ═══════════════════════════════════════════════════════════════════════════════
   // DRAG & DROP STATE - Forensisch sicher mit secureDelete
@@ -5880,11 +6084,27 @@ function ProjectPlanningModule({ appState, updateState }) {
     }
     
     try {
-      // 1. Erstelle neuen Eintrag am Zielort (mit allen Daten)
+      // Prüfe ob am Zielort bereits ein Eintrag existiert
+      const existingAtTarget = getEintragByZeile(targetDateKey, targetZeile);
+      
+      // Finde den tatsächlichen zeilenIndex für den neuen Eintrag
+      let finalZeile = targetZeile;
+      
+      if (existingAtTarget?.text) {
+        // ZIELORT HAT BEREITS INHALT: Finde freien zeilenIndex am Zieltag
+        console.log('🔐 Drag&Drop: Zielzelle belegt, suche freien Platz...');
+        const alleEintraegeAmZieltag = (appState.planung || []).filter(p => p.datum === targetDateKey && !p.kwKey);
+        const belegteIndizes = alleEintraegeAmZieltag.map(e => e.zeilenIndex || 0);
+        finalZeile = 0;
+        while (belegteIndizes.includes(finalZeile)) finalZeile++;
+        console.log(`   → Freier Platz gefunden: Zeile ${finalZeile}`);
+      }
+      
+      // Neuen Eintrag am Zielort erstellen
       const newEntry = {
-        id: Date.now() + Math.random(),
+        id: crypto.randomUUID(),
         datum: targetDateKey,
-        zeilenIndex: targetZeile,
+        zeilenIndex: finalZeile,
         text: draggedEntry.text || '',
         farbe: draggedEntry.farbe || '#f97316',
         stunden: draggedEntry.stunden || '',
@@ -5892,11 +6112,11 @@ function ProjectPlanningModule({ appState, updateState }) {
         movedFrom: `${draggedEntry.sourceDate}#${draggedEntry.sourceZeile}` // Audit-Trail
       };
       
-      // 2. FORENSISCH SICHER: Alten Eintrag 3x überschreiben und löschen
+      // FORENSISCH SICHER: Alten Eintrag 3x überschreiben und löschen
       console.log('🔐 Drag&Drop: Sichere Löschung am Quell-Ort wird durchgeführt...');
       await secureDelete(updateState, 'planung', draggedEntry.id);
       
-      // 3. Neuen Eintrag am Zielort hinzufügen
+      // Neuen Eintrag am Zielort hinzufügen
       updateState(prev => ({
         ...prev,
         planung: [...(prev.planung || []), newEntry]
@@ -6065,13 +6285,88 @@ function ProjectPlanningModule({ appState, updateState }) {
       updateState(prev => ({
         ...prev,
         planung: [...(prev.planung || []), {
-          id: Date.now() + Math.random(),
+          id: crypto.randomUUID(),
           kwKey: key,
           text: text,
           created: new Date().toISOString()
         }]
       }));
     }
+  };
+  
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // TAGESGENAUE VERFÜGBARKEIT - Speichert Abwesenheiten pro Tag und MA
+  // Format: planungSettings.tagesVerfuegbarkeit[dateKey][maName] = { typ, label, icon, farbe }
+  // FORENSISCH SICHER: 3x überschreiben vor dem Entfernen
+  // ═══════════════════════════════════════════════════════════════════════════════
+  const getTagesVerfuegbarkeit = (dateKey, maName) => {
+    return appState.planungSettings?.tagesVerfuegbarkeit?.[dateKey]?.[maName] || null;
+  };
+  
+  const setTagesVerfuegbarkeit = (dateKey, maName, verfuegbarkeit) => {
+    updateState(prev => {
+      const existing = prev.planungSettings?.tagesVerfuegbarkeit?.[dateKey]?.[maName];
+      // Support sowohl 'typ' als auch 'id' für Kompatibilität
+      const verfTyp = verfuegbarkeit?.typ || verfuegbarkeit?.id;
+      
+      // Wenn gleiche Verfügbarkeit schon gesetzt → FORENSISCH SICHER Entfernen (Toggle)
+      if (existing?.typ === verfTyp) {
+        console.log(`🔐 Tagesverfügbarkeit: Forensisch sichere Löschung für ${maName} am ${dateKey}...`);
+        
+        // FORENSISCH SICHER: 3x mit Zufallsdaten überschreiben
+        let newTagesVerf = { ...prev.planungSettings?.tagesVerfuegbarkeit };
+        if (newTagesVerf[dateKey]) {
+          // Pass 1-3: Mit Zufallsdaten überschreiben (ALLE Felder inkl. ID!)
+          for (let pass = 0; pass < 3; pass++) {
+            newTagesVerf[dateKey][maName] = {
+              id: crypto.randomUUID(), // Auch ID überschreiben!
+              typ: Math.random().toString(36).substring(2, 15),
+              label: Math.random().toString(36).substring(2, 15),
+              icon: Math.random().toString(36).substring(2, 5),
+              farbe: Math.random().toString(36).substring(2, 10),
+              created: new Date(Math.random() * Date.now()).toISOString(), // Auch Timestamp überschreiben!
+              deleted: new Date().toISOString(),
+              pass: pass + 1
+            };
+          }
+          // Dann löschen
+          delete newTagesVerf[dateKey][maName];
+          // Leeren Tag-Eintrag aufräumen
+          if (Object.keys(newTagesVerf[dateKey]).length === 0) {
+            delete newTagesVerf[dateKey];
+          }
+        }
+        return {
+          ...prev,
+          planungSettings: {
+            ...prev.planungSettings,
+            tagesVerfuegbarkeit: newTagesVerf
+          }
+        };
+      }
+      
+      // Neue Verfügbarkeit setzen (mit UUID für Audit-Trail)
+      return {
+        ...prev,
+        planungSettings: {
+          ...prev.planungSettings,
+          tagesVerfuegbarkeit: {
+            ...prev.planungSettings?.tagesVerfuegbarkeit,
+            [dateKey]: {
+              ...prev.planungSettings?.tagesVerfuegbarkeit?.[dateKey],
+              [maName]: verfuegbarkeit ? {
+                id: crypto.randomUUID(), // Eindeutige ID für jeden Eintrag
+                typ: verfTyp, // Verwende vereinheitlichten Typ
+                label: verfuegbarkeit.label,
+                icon: verfuegbarkeit.icon,
+                farbe: verfuegbarkeit.farbe,
+                created: new Date().toISOString()
+              } : null
+            }
+          }
+        }
+      };
+    });
   };
   
   // Moderne Pastellfarben passend zum Craftnote-Design
@@ -6186,7 +6481,7 @@ function ProjectPlanningModule({ appState, updateState }) {
       }));
     } else if (text.trim() !== '') {
       const newEntry = {
-        id: Date.now() + Math.random(),
+        id: crypto.randomUUID(),
         datum: dateKey,
         zeilenIndex: zeilenIndex,
         text: text,
@@ -6213,7 +6508,7 @@ function ProjectPlanningModule({ appState, updateState }) {
       // Dann neuen Eintrag mit neuem Text erstellen (falls nicht leer)
       if (text.trim() !== '') {
         const newEntry = {
-          id: Date.now() + Math.random(),
+          id: crypto.randomUUID(),
           datum: dateKey,
           zeilenIndex: zeilenIndex,
           text: text,
@@ -6232,7 +6527,7 @@ function ProjectPlanningModule({ appState, updateState }) {
     } else if (text.trim() !== '') {
       // Kein existierender Eintrag - einfach neu anlegen
       const newEntry = {
-        id: Date.now() + Math.random(),
+        id: crypto.randomUUID(),
         datum: dateKey,
         zeilenIndex: zeilenIndex,
         text: text,
@@ -6270,7 +6565,7 @@ function ProjectPlanningModule({ appState, updateState }) {
     const eintraege = getEintraege(dateKey);
     const maxIndex = eintraege.length > 0 ? Math.max(...eintraege.map(e => e.zeilenIndex || 0)) : -1;
     const newEntry = {
-      id: Date.now() + Math.random(),
+      id: crypto.randomUUID(),
       datum: dateKey,
       zeilenIndex: maxIndex + 1,
       text: '',
@@ -6415,15 +6710,23 @@ function ProjectPlanningModule({ appState, updateState }) {
       'estrich': 'Estrich',
       'hausm': 'Hausm.',
       'garten': 'Garten',
-      // Sonstiges
+      // Status
       'fuehrung': 'Führung',
       'meister': 'Meister',
       'geselle': 'Geselle',
       'azubi': 'Azubi',
       'ersthelfer': 'Ersthelfer',
-      'sicherheit': 'SiGeKo'
+      'sicherheit': 'SiGeKo',
+      // Verfügbarkeit
+      'urlaub': '🏖️ Urlaub',
+      'krank': '🤒 Krank',
+      'frei': '🏠 Frei',
+      'teilzeit': '⏰ Teilzeit',
+      'aussendienst': '🚗 Außend.',
+      'schulung': '📚 Schulung',
+      'elternzeit': '👶 Elternz.'
     };
-    return skills.map(s => skillLabels[s] || s); // Falls nicht gefunden, zeige den Skill-Text direkt
+    return skills.map(s => skillLabels[s] || s); // Falls nicht gefunden, zeige den Attribut-Text direkt
   };
   
   const copyZeile = (text) => {
@@ -6432,8 +6735,8 @@ function ProjectPlanningModule({ appState, updateState }) {
   
   // Zeile zum nächsten/vorherigen Tag kopieren
   // ═══════════════════════════════════════════════════════════════════════════════
-  // FORENSISCH SICHER: Falls am Zieltag ein Eintrag existiert, wird dieser erst
-  // 3x mit Zufallsdaten überschrieben bevor die neuen Daten eingefügt werden
+  // FORENSISCH SICHER: Falls am Zieltag ein Eintrag existiert, wird ein freier
+  // zeilenIndex gesucht. Der bestehende Eintrag bleibt erhalten.
   // ═══════════════════════════════════════════════════════════════════════════════
   const copyToNextDay = async (dateKey, zeilenIndex, direction) => {
     const eintrag = getEintragByZeile(dateKey, zeilenIndex);
@@ -6443,18 +6746,30 @@ function ProjectPlanningModule({ appState, updateState }) {
     currentDate.setDate(currentDate.getDate() + direction); // +1 = rechts, -1 = links
     const targetDateKey = formatDateKey(currentDate);
     
-    // FORENSISCH SICHER: Falls am Ziel ein Eintrag existiert, erst sicher löschen
+    // Prüfe ob am Ziel ein Eintrag existiert
     const existing = getEintragByZeile(targetDateKey, zeilenIndex);
-    if (existing?.id) {
-      console.log('🔐 copyToNextDay: Bestehender Eintrag wird forensisch sicher gelöscht...');
+    
+    // Bestimme den zeilenIndex für den neuen Eintrag
+    let finalZeile = zeilenIndex;
+    if (existing?.text) {
+      // Zielzelle belegt: Finde freien zeilenIndex am Zieltag
+      console.log('🔐 copyToNextDay: Zielzelle belegt, suche freien Platz...');
+      const alleEintraegeAmZieltag = (appState.planung || []).filter(p => p.datum === targetDateKey && !p.kwKey);
+      const belegteIndizes = alleEintraegeAmZieltag.map(e => e.zeilenIndex || 0);
+      finalZeile = 0;
+      while (belegteIndizes.includes(finalZeile)) finalZeile++;
+      console.log(`   → Freier Platz gefunden: Zeile ${finalZeile}`);
+    } else if (existing?.id && !existing.text) {
+      // Geister-Eintrag ohne Text: Forensisch sicher löschen
+      console.log('🔐 copyToNextDay: Geister-Eintrag wird forensisch sicher gelöscht...');
       await secureDelete(updateState, 'planung', existing.id);
     }
     
     // Neuen Eintrag am Ziel erstellen
     const newEntry = {
-      id: Date.now() + Math.random(),
+      id: crypto.randomUUID(),
       datum: targetDateKey,
-      zeilenIndex: zeilenIndex,
+      zeilenIndex: finalZeile,
       text: eintrag.text,
       farbe: eintrag.farbe,
       created: new Date().toISOString(),
@@ -6504,7 +6819,7 @@ function ProjectPlanningModule({ appState, updateState }) {
     
     if (currentData) {
       newEntries.push({
-        id: Date.now() + Math.random(),
+        id: crypto.randomUUID(),
         datum: dateKey,
         zeilenIndex: targetIndex, // Aktueller Eintrag geht zur Zielposition
         text: currentData.text,
@@ -6517,7 +6832,7 @@ function ProjectPlanningModule({ appState, updateState }) {
     
     if (targetData) {
       newEntries.push({
-        id: Date.now() + Math.random() + 0.001,
+        id: crypto.randomUUID(),
         datum: dateKey,
         zeilenIndex: zeilenIndex, // Ziel-Eintrag geht zur aktuellen Position
         text: targetData.text,
@@ -6592,20 +6907,54 @@ function ProjectPlanningModule({ appState, updateState }) {
     });
   };
   
-  // Kopierten Tag einfügen (mit forensischer Löschung bestehender Einträge)
+  // Kopierten Tag einfügen (mit forensischer Löschung bestehender Einträge + Verfügbarkeit)
   const pasteFullDay = async (targetDateKey) => {
     if (!copiedDay) return;
     
-    // Bestehende Einträge am Zieltag sicher löschen
+    // Sammle alle MAs aus bestehenden Einträgen für Verfügbarkeit-Löschung
+    const alleMAs = new Set();
     const existingEntries = getEintraege(targetDateKey).filter(e => e.text && e.text.trim() !== '');
     for (const entry of existingEntries) {
+      // MA aus Text extrahieren (Format: "Projekt: MA1, MA2" oder "MA1, MA2")
+      const textParts = (entry.text || '').split(':');
+      const maPart = textParts.length > 1 ? textParts.slice(1).join(':').trim() : textParts[0].trim();
+      maPart.split(',').forEach(ma => {
+        const maName = ma.trim();
+        if (maName) alleMAs.add(maName);
+      });
+    }
+    
+    // Bestehende Einträge am Zieltag sicher löschen
+    for (const entry of existingEntries) {
       await secureDelete(updateState, 'planung', entry.id);
+    }
+    
+    // tagesVerfuegbarkeit für betroffene MAs forensisch löschen
+    if (planungSettings.tagesVerfuegbarkeit?.[targetDateKey]) {
+      const tagVerfueg = planungSettings.tagesVerfuegbarkeit[targetDateKey];
+      for (const maName of alleMAs) {
+        if (tagVerfueg[maName]) {
+          // Forensische 3x Überschreibung aller Felder inkl. id
+          for (let i = 0; i < 3; i++) {
+            await setTagesVerfuegbarkeit(targetDateKey, maName, {
+              id: crypto.randomUUID(),
+              typ: crypto.randomUUID(),
+              label: crypto.randomUUID(),
+              icon: crypto.randomUUID(),
+              farbe: crypto.randomUUID(),
+              created: crypto.randomUUID()
+            });
+          }
+          // Dann löschen
+          await setTagesVerfuegbarkeit(targetDateKey, maName, null);
+        }
+      }
     }
     
     // Neue Einträge einfügen
     updateState(prev => {
       const newEntries = copiedDay.eintraege.map(e => ({
-        id: Date.now() + Math.random(),
+        id: crypto.randomUUID(),
         datum: targetDateKey,
         zeilenIndex: e.zeilenIndex,
         text: e.text,
@@ -6760,18 +7109,36 @@ function ProjectPlanningModule({ appState, updateState }) {
             const mitarbeiterListe = getMitarbeiterFromText(eintrag.text);
             if (mitarbeiterListe.length > 0) {
               let maY = y + (eintrag.stunden ? 16 : 13);
-              doc.setFont(undefined, 'normal');
               mitarbeiterListe.slice(0, 3).forEach((ma, maIdx) => {
+                const verf = getTagesVerfuegbarkeit(dateKey, ma);
                 const skills = getSkillsForMitarbeiter(ma);
+                
+                // MA-Name FETT hervorgehoben
                 doc.setFontSize(7);
-                doc.setTextColor(71, 85, 105);
-                // MA-Name mit Skills in der PDF
-                let maText = '• ' + ma;
-                if (skills.length > 0) {
-                  maText += ' [' + skills.slice(0, 3).join(', ') + (skills.length > 3 ? '…' : '') + ']';
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(30, 41, 59); // Dunkler für Name
+                doc.text('• ' + ma, x + 2, maY);
+                maY += 3.5;
+                
+                // Verfügbarkeit auf eigener Zeile (wenn vorhanden)
+                if (verf && verf.label) {
+                  doc.setFont(undefined, 'normal');
+                  doc.setFontSize(6);
+                  doc.setTextColor(234, 88, 12); // Orange für Status
+                  doc.text('  Status: ' + verf.label, x + 2, maY);
+                  maY += 3;
                 }
-                doc.text(maText.substring(0, 28), x + 2, maY);
-                maY += 4;
+                
+                // Skills auf eigener Zeile (wenn vorhanden)
+                if (skills.length > 0) {
+                  doc.setFont(undefined, 'normal');
+                  doc.setFontSize(6);
+                  doc.setTextColor(99, 102, 241); // Indigo für Skills
+                  doc.text('  Skills: ' + skills.slice(0, 4).join(', ') + (skills.length > 4 ? '…' : ''), x + 2, maY);
+                  maY += 3;
+                }
+                
+                maY += 1; // Abstand zum nächsten MA
               });
             }
             
@@ -6802,15 +7169,73 @@ function ProjectPlanningModule({ appState, updateState }) {
           doc.text(`${WOCHENTAGE[d.getDay() === 0 ? 6 : d.getDay() - 1]} ${d.toLocaleDateString('de-DE')}`, 14, yPos);
           yPos += 6;
           
-          doc.setFont(undefined, 'normal');
-          doc.setFontSize(9);
-          doc.setTextColor(71, 85, 105);
           eintraege.forEach((e, i) => {
             const rgb = hexToRgb(FARBEN_SOLID[e.farbeIndex ?? (i % FARBEN_SOLID.length)]);
             doc.setFillColor(Math.min(255, rgb[0] + 180), Math.min(255, rgb[1] + 180), Math.min(255, rgb[2] + 180));
-            doc.roundedRect(14, yPos - 3.5, 260, 5, 1, 1, 'F');
-            doc.text(`• ${e.text}`, 16, yPos);
-            yPos += 6;
+            const projektName = getProjektName(e.text) || e.text;
+            const maListe = getMitarbeiterFromText(e.text);
+            
+            // Berechne Box-Höhe vorab
+            let boxHeight = 8; // Basis für Projektname
+            if (maListe.length > 0) boxHeight += maListe.length * 8; // Pro MA 8pt
+            if (e.notiz && e.notiz.trim() !== '') boxHeight += 6;
+            
+            // Hintergrund-Box zeichnen
+            doc.roundedRect(14, yPos - 3.5, 260, boxHeight, 1, 1, 'F');
+            
+            // PROJEKTNAME FETT
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(30, 41, 59);
+            doc.text('• ' + projektName, 16, yPos);
+            let currentY = yPos + 5;
+            
+            // Mitarbeiter einzeln mit Zeilenumbruch
+            if (maListe.length > 0) {
+              maListe.forEach(ma => {
+                const verf = getTagesVerfuegbarkeit(dateKey, ma);
+                const skills = getSkillsForMitarbeiter(ma);
+                
+                // MA-Name fett + Verfügbarkeit in einer Zeile
+                doc.setFontSize(8);
+                doc.setFont(undefined, 'bold');
+                doc.setTextColor(51, 65, 85);
+                let maLine = '   - ' + ma;
+                
+                // Verfügbarkeit direkt anhängen (normal, orange)
+                if (verf && verf.label) {
+                  maLine += ' ';
+                  doc.text(maLine, 18, currentY);
+                  const maWidth = doc.getTextWidth(maLine);
+                  doc.setFont(undefined, 'normal');
+                  doc.setTextColor(234, 88, 12); // Orange
+                  doc.text('(' + verf.label + ')', 18 + maWidth, currentY);
+                } else {
+                  doc.text(maLine, 18, currentY);
+                }
+                currentY += 4;
+                
+                // Skills auf neuer Zeile
+                if (skills.length > 0) {
+                  doc.setFontSize(7);
+                  doc.setFont(undefined, 'italic');
+                  doc.setTextColor(99, 102, 241); // Indigo
+                  doc.text('      Skills: ' + skills.join(', '), 18, currentY);
+                  currentY += 4;
+                }
+              });
+            }
+            
+            // Notiz
+            if (e.notiz && e.notiz.trim() !== '') {
+              doc.setFont(undefined, 'italic');
+              doc.setFontSize(7);
+              doc.setTextColor(100, 116, 139);
+              doc.text('   📝 ' + e.notiz.substring(0, 80) + (e.notiz.length > 80 ? '...' : ''), 18, currentY);
+              currentY += 4;
+            }
+            
+            yPos += boxHeight + 2;
           });
           yPos += 4;
           
@@ -6946,7 +7371,7 @@ function ProjectPlanningModule({ appState, updateState }) {
         {(() => {
           return (
           <div className="space-y-3">
-            {/* TAP & PLACE INFO-BANNER */}
+            {/* TAP & PLACE INFO-BANNER - Mitarbeiter */}
             {tappedMitarbeiter && (
               <div className="bg-blue-100 border-2 border-blue-400 rounded-lg px-3 py-2 flex items-center justify-between">
                 <span className="text-blue-800 font-medium text-sm">
@@ -6955,6 +7380,21 @@ function ProjectPlanningModule({ appState, updateState }) {
                 <button 
                   onClick={() => setTappedMitarbeiter(null)}
                   className="px-2 py-1 bg-blue-500 text-white rounded text-xs font-bold hover:bg-blue-600"
+                >
+                  ✕ Abbrechen
+                </button>
+              </div>
+            )}
+            
+            {/* TAP & PLACE INFO-BANNER - Auftrag */}
+            {tappedAuftrag && (
+              <div className="bg-orange-100 border-2 border-orange-400 rounded-lg px-3 py-2 flex items-center justify-between">
+                <span className="text-orange-800 font-medium text-sm">
+                  📋 <strong>{tappedAuftrag.text}</strong> ausgewählt - Tippe auf eine Zelle zum Einplanen
+                </span>
+                <button 
+                  onClick={() => setTappedAuftrag(null)}
+                  className="px-2 py-1 bg-orange-500 text-white rounded text-xs font-bold hover:bg-orange-600"
                 >
                   ✕ Abbrechen
                 </button>
@@ -6997,6 +7437,9 @@ function ProjectPlanningModule({ appState, updateState }) {
                   const maSkills = appState.planungSettings?.mitarbeiterSkills?.[ma] || [];
                   const isSelectedForSkills = selectedMitarbeiter === ma;
                   const isSelectedForPlace = tappedMitarbeiter === ma;
+                  // Prüfe heutige Verfügbarkeit für diesen MA
+                  const heuteKey = formatDateKey(new Date());
+                  const heuteVerfuegbarkeit = getTagesVerfuegbarkeit(heuteKey, ma);
                   return (
                     <div key={i} className="flex flex-col">
                       {/* MA-Button - TAP TO SELECT für Mobile */}
@@ -7007,6 +7450,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                             setTappedMitarbeiter(null);
                           } else {
                             setTappedMitarbeiter(ma);
+                            setTappedAuftrag(null); // Andere Auswahlen zurücksetzen
                             if (navigator.vibrate) navigator.vibrate(50);
                           }
                         }}
@@ -7015,11 +7459,14 @@ function ProjectPlanningModule({ appState, updateState }) {
                             ? 'bg-blue-500 text-white ring-2 ring-blue-300 scale-105' 
                             : isSelectedForSkills
                               ? 'bg-indigo-500 text-white' 
-                              : 'bg-green-100 text-green-700 hover:bg-green-200 active:bg-green-300'
+                              : heuteVerfuegbarkeit
+                                ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 active:bg-amber-300 border-l-4'
+                                : 'bg-green-100 text-green-700 hover:bg-green-200 active:bg-green-300'
                         }`}
-                        title="Tippen zum Auswählen, dann Zelle antippen"
+                        style={heuteVerfuegbarkeit && !isSelectedForPlace && !isSelectedForSkills ? { borderLeftColor: heuteVerfuegbarkeit.farbe } : {}}
+                        title={heuteVerfuegbarkeit ? `${ma} - Heute: ${heuteVerfuegbarkeit.label}` : "Tippen zum Auswählen, dann Zelle antippen"}
                       >
-                        {isSelectedForPlace ? '✓ ' : '✋ '}{ma}
+                        {isSelectedForPlace ? '✓ ' : heuteVerfuegbarkeit ? heuteVerfuegbarkeit.icon + ' ' : '✋ '}{ma}
                         {maSkills.length > 0 && (
                           <span className="ml-1 text-[10px] opacity-70">({maSkills.length})</span>
                         )}
@@ -7040,7 +7487,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                             : 'bg-green-50 text-green-600 hover:bg-green-100'
                         }`}
                       >
-                        ⚙️ Skills
+                        ⚙️ Attr.
                       </button>
                     </div>
                   );
@@ -7103,6 +7550,18 @@ function ProjectPlanningModule({ appState, updateState }) {
                     { id: 'ersthelfer', label: 'Ersthelfer', icon: '⚕️' },
                     { id: 'sicherheit', label: 'SiGeKo' }
                   ]
+                },
+                { 
+                  title: '📅 Verfügbarkeit', 
+                  skills: [
+                    { id: 'urlaub', label: 'Urlaub', icon: '🏖️' },
+                    { id: 'krank', label: 'Krank', icon: '🤒' },
+                    { id: 'frei', label: 'Frei', icon: '🏠' },
+                    { id: 'teilzeit', label: 'Teilzeit', icon: '⏰' },
+                    { id: 'aussendienst', label: 'Außendienst', icon: '🚗' },
+                    { id: 'schulung', label: 'Schulung', icon: '📚' },
+                    { id: 'elternzeit', label: 'Elternzeit', icon: '👶' }
+                  ]
                 }
               ];
               
@@ -7112,16 +7571,16 @@ function ProjectPlanningModule({ appState, updateState }) {
               return (
                 <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-bold text-indigo-800 text-sm">👷 Skills für: {ma}</h4>
+                    <h4 className="font-bold text-indigo-800 text-sm">👷 Attribute für: {ma}</h4>
                     <button 
                       onClick={() => setSelectedMitarbeiter(null)}
                       className="text-indigo-400 hover:text-indigo-600 text-lg"
                     >×</button>
                   </div>
                   
-                  {/* Skill-Kategorien nebeneinander */}
+                  {/* Attribut-Kategorien (ohne Verfügbarkeit - die wird direkt beim MA in der Planung gesetzt) */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {skillCategories.map((category, catIdx) => (
+                    {skillCategories.filter(c => c.title !== '📅 Verfügbarkeit').map((category, catIdx) => (
                       <div key={catIdx} className="bg-white rounded-lg p-2 shadow-sm">
                         <div className="text-slate-600 text-[10px] font-bold mb-1.5">{category.title}</div>
                         <div className="flex flex-wrap gap-1">
@@ -7186,9 +7645,18 @@ function ProjectPlanningModule({ appState, updateState }) {
                     ))}
                   </div>
                   
-                  {/* Eigene Skills */}
+                  {/* 📅 VERFÜGBARKEIT - Hinweis */}
+                  <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                    <div className="text-amber-700 text-[10px] font-bold mb-1">📅 Tagesverfügbarkeit</div>
+                    <div className="text-[9px] text-amber-600">
+                      Die Verfügbarkeit (Urlaub, Krank, etc.) wird direkt beim eingeplanten Mitarbeiter gesetzt.<br/>
+                      → Mitarbeiter in Planung einfügen → Auf das <span className="bg-amber-100 px-1 rounded">+📅</span> Symbol beim MA klicken
+                    </div>
+                  </div>
+                  
+                  {/* Eigene Attribute */}
                   <div className="mt-3 p-2 bg-white rounded-lg">
-                    <div className="text-slate-600 text-[10px] font-bold mb-1">✏️ Eigene Skills</div>
+                    <div className="text-slate-600 text-[10px] font-bold mb-1">✏️ Eigene Attribute</div>
                     <div className="flex flex-wrap gap-1 mb-2">
                       {customSkills.map((customSkill, csIdx) => (
                         <span 
@@ -7250,7 +7718,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                       <input 
                         type="text" 
                         name="customSkill"
-                        placeholder="Eigenen Skill eingeben..."
+                        placeholder="Eigenes Attribut eingeben..."
                         className="flex-1 px-3 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-400"
                       />
                       <button 
@@ -7344,7 +7812,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                       <div className="font-bold text-sm">{WOCHENTAGE[d.getDay() === 0 ? 6 : d.getDay() - 1]}</div>
                       <div className="text-xs opacity-80">{d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}</div>
                       {feiertag && <div className="text-[9px] opacity-90">{feiertag.substring(0,12)}</div>}
-                      {/* Kopier-Buttons */}
+                      {/* Kopier/Löschen-Buttons */}
                       <div className="flex gap-1 justify-center mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => copyFullDay(dateKey)}
@@ -7357,6 +7825,54 @@ function ProjectPlanningModule({ appState, updateState }) {
                             className={`text-[9px] px-1.5 py-0.5 rounded ${feiertag || isToday ? 'bg-white/20 hover:bg-white/30' : 'bg-green-100 hover:bg-green-200 text-green-600'}`}
                             title="Hier einfügen"
                           >📥</button>
+                        )}
+                        {/* Tag löschen Button */}
+                        {getEintraege(dateKey).filter(e => e.text && e.text.trim() !== '').length > 0 && (
+                          <button 
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const eintraege = getEintraege(dateKey).filter(e => e.text && e.text.trim() !== '');
+                              if (confirm(`🗑️ Alle ${eintraege.length} Einträge vom ${d.getDate()}.${d.getMonth()+1}. SICHER LÖSCHEN?\n\n(3x überschreiben + löschen + Verfügbarkeit)`)) {
+                                // Sammle alle MAs für Verfügbarkeit-Löschung
+                                const alleMAs = new Set();
+                                for (const eintrag of eintraege) {
+                                  const textParts = (eintrag.text || '').split(':');
+                                  const maPart = textParts.length > 1 ? textParts.slice(1).join(':').trim() : textParts[0].trim();
+                                  maPart.split(',').forEach(ma => {
+                                    const maName = ma.trim();
+                                    if (maName) alleMAs.add(maName);
+                                  });
+                                }
+                                
+                                // Einträge forensisch löschen
+                                for (const eintrag of eintraege) {
+                                  await secureDelete(updateState, 'planung', eintrag.id);
+                                }
+                                
+                                // tagesVerfuegbarkeit forensisch löschen
+                                if (planungSettings.tagesVerfuegbarkeit?.[dateKey]) {
+                                  const tagVerfueg = planungSettings.tagesVerfuegbarkeit[dateKey];
+                                  for (const maName of alleMAs) {
+                                    if (tagVerfueg[maName]) {
+                                      for (let i = 0; i < 3; i++) {
+                                        await setTagesVerfuegbarkeit(dateKey, maName, {
+                                          id: crypto.randomUUID(),
+                                          typ: crypto.randomUUID(),
+                                          label: crypto.randomUUID(),
+                                          icon: crypto.randomUUID(),
+                                          farbe: crypto.randomUUID(),
+                                          created: crypto.randomUUID()
+                                        });
+                                      }
+                                      await setTagesVerfuegbarkeit(dateKey, maName, null);
+                                    }
+                                  }
+                                }
+                              }
+                            }}
+                            className={`text-[9px] px-1.5 py-0.5 rounded ${feiertag || isToday ? 'bg-white/20 hover:bg-white/30 text-white' : 'bg-red-100 hover:bg-red-200 text-red-600'}`}
+                            title="Tag löschen (3x überschreiben)"
+                          >🗑</button>
                         )}
                       </div>
                     </th>
@@ -7432,11 +7948,12 @@ function ProjectPlanningModule({ appState, updateState }) {
                                 await updateEintragSecure(dateKey, slotIndex, neuerText);
                               }
                             } else {
-                              // Leere Zelle - nur MA eintragen (neuer Eintrag, kein secureDelete nötig)
-                              updateEintrag(dateKey, slotIndex, tappedMitarbeiter);
+                              // Leere Zelle - MA mit 'Einsatz:' Prefix eintragen für korrekte Gruppierung
+                              const neuerText = `Einsatz: ${tappedMitarbeiter}`;
+                              updateEintrag(dateKey, slotIndex, neuerText);
                             }
+                            setTappedMitarbeiter(null); // Auswahl zurücksetzen nach Einfügen
                             if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
-                            // MA bleibt ausgewählt für weitere Einfügungen
                             return;
                           }
                           
@@ -7455,16 +7972,15 @@ function ProjectPlanningModule({ appState, updateState }) {
                         } ${hatInhalt && !tappedMitarbeiter ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         style={{ backgroundColor: hatInhalt && !isDragOver ? getZeilenFarbe(eintrag) : undefined, position: 'relative' }}
                       >
-                        {/* TAP & PLACE OVERLAY - dezent wie in Monatsansicht */}
+                        {/* TAP & PLACE OVERLAY - dezent, auf Mobile leicht sichtbar */}
                         {tappedMitarbeiter && (
                           <div 
-                            className="absolute inset-0 z-30 flex items-center justify-center rounded cursor-pointer hover:bg-slate-100 transition-colors"
+                            className="group absolute inset-0 z-30 flex items-center justify-center rounded cursor-pointer border border-cyan-200 sm:border-transparent hover:border-cyan-400 bg-cyan-50/20 sm:bg-transparent hover:bg-cyan-50/40 transition-all"
                             onClick={async (e) => {
                               e.stopPropagation();
                               console.log('🔐 TAP & PLACE: Forensisch sichere Einfügung...');
                               const existing = getEintragByZeile(dateKey, slotIndex);
                               if (existing?.text) {
-                                // Zelle hat bereits Inhalt - MA hinzufügen (FORENSISCH SICHER)
                                 const alteMA = getMitarbeiterFromText(existing.text);
                                 if (!alteMA.includes(tappedMitarbeiter)) {
                                   const projekt = getProjektName(existing.text);
@@ -7473,19 +7989,45 @@ function ProjectPlanningModule({ appState, updateState }) {
                                   await updateEintragSecure(dateKey, slotIndex, neuerText);
                                   if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
                                 } else {
-                                  // MA ist schon drin - Feedback
                                   if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
                                 }
                               } else {
-                                // Leere Zelle - nur MA eintragen (neuer Eintrag, kein secureDelete nötig)
-                                updateEintrag(dateKey, slotIndex, tappedMitarbeiter);
+                                // Leere Zelle - MA mit 'Einsatz:' Prefix eintragen
+                                const neuerText = `Einsatz: ${tappedMitarbeiter}`;
+                                updateEintrag(dateKey, slotIndex, neuerText);
                                 if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
                               }
+                              setTappedMitarbeiter(null);
                             }}
                           >
-                            <span className="text-slate-400 text-[10px]">
-                              + {tappedMitarbeiter}
-                            </span>
+                            <span className="text-cyan-500 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">+</span>
+                          </div>
+                        )}
+                        {/* TAP & PLACE OVERLAY für Aufträge - dezent, auf Mobile leicht sichtbar */}
+                        {tappedAuftrag && (
+                          <div 
+                            className="group absolute inset-0 z-30 flex items-center justify-center rounded cursor-pointer border border-orange-200 sm:border-transparent hover:border-orange-400 bg-orange-50/20 sm:bg-transparent hover:bg-orange-50/40 transition-all"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Auftrag in Wochenansicht einplanen
+                              const newEntry = {
+                                id: crypto.randomUUID(),
+                                datum: dateKey,
+                                zeilenIndex: slotIndex,
+                                text: tappedAuftrag.text,
+                                farbe: '#f97316',
+                                created: new Date().toISOString(),
+                                fromAuftrag: tappedAuftrag.id
+                              };
+                              updateState(prev => ({
+                                ...prev,
+                                planung: [...(prev.planung || []), newEntry]
+                              }));
+                              setTappedAuftrag(null);
+                              if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                            }}
+                          >
+                            <span className="text-orange-500 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">+</span>
                           </div>
                         )}
                         {/* MOBILE DROP-ZONE OVERLAY - fängt Touch-Events ab wenn Drag aktiv */}
@@ -7514,7 +8056,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                                 if (existing) {
                                   return { ...prev, planung: prev.planung.map(p => p.id === existing.id ? { ...p, stunden: e.target.value } : p) };
                                 } else {
-                                  return { ...prev, planung: [...(prev.planung || []), { id: Date.now() + Math.random(), datum: dateKey, zeilenIndex: slotIndex, stunden: e.target.value, text: '', created: new Date().toISOString() }] };
+                                  return { ...prev, planung: [...(prev.planung || []), { id: crypto.randomUUID(), datum: dateKey, zeilenIndex: slotIndex, stunden: e.target.value, text: '', created: new Date().toISOString() }] };
                                 }
                               });
                             }}
@@ -7541,14 +8083,14 @@ function ProjectPlanningModule({ appState, updateState }) {
                             ) : (
                               <button
                                 onClick={(e) => { e.stopPropagation(); setShowProjektModal({ dateKey, zeilenIndex: slotIndex }); }}
-                                className="flex-1 px-1 py-0.5 text-slate-300 text-[10px] hover:text-orange-500 hover:bg-orange-50 rounded text-left"
+                                className="flex-1 px-1 py-0.5 text-slate-300 text-[10px] hover:text-orange-500 hover:bg-orange-50/50 rounded text-left opacity-50 hover:opacity-100 transition-all"
                               >
                                 + Projekt wählen
                               </button>
                             )}
                           </div>
                           
-                          {/* Mitarbeiter UNTEREINANDER MIT SKILLS + ENTFERNEN-BUTTON */}
+                          {/* Mitarbeiter UNTEREINANDER MIT SKILLS + VERFÜGBARKEIT-BADGE + ENTFERNEN-BUTTON */}
                           {hatInhalt && (() => {
                             const mitarbeiterListe = getMitarbeiterFromText(eintrag.text);
                             if (mitarbeiterListe.length === 0) return null;
@@ -7556,10 +8098,21 @@ function ProjectPlanningModule({ appState, updateState }) {
                               <div className="mt-0.5 pl-2 space-y-0.5">
                                 {mitarbeiterListe.map((ma, maIdx) => {
                                   const skills = getSkillsForMitarbeiter(ma);
+                                  const verfuegbarkeit = getTagesVerfuegbarkeit(dateKey, ma);
                                   return (
                                     <div key={maIdx} className="group/ma flex items-center gap-1 text-[10px] text-slate-600 flex-wrap">
                                       <span className="w-1 h-1 bg-green-500 rounded-full flex-shrink-0"></span>
                                       <span className="font-semibold">{ma}</span>
+                                      {/* VERFÜGBARKEITS-BADGE (nur Anzeige - Auswahl in Aktionsleiste unten) */}
+                                      {verfuegbarkeit && (
+                                        <span 
+                                          className="text-[8px] px-1 rounded text-white"
+                                          style={{ backgroundColor: verfuegbarkeit.farbe }}
+                                          title={`${verfuegbarkeit.label}`}
+                                        >
+                                          {verfuegbarkeit.icon} {verfuegbarkeit.label}
+                                        </span>
+                                      )}
                                       {skills.length > 0 && (
                                         <span className="text-[8px] text-indigo-600 bg-indigo-50 px-1 rounded">
                                           {skills.slice(0, 3).join(' · ')}{skills.length > 3 ? '…' : ''}
@@ -7580,10 +8133,29 @@ function ProjectPlanningModule({ appState, updateState }) {
                                             // Letzter MA - nur Projekt behalten oder Zelle forensisch leeren
                                             await updateEintragSecure(dateKey, slotIndex, projekt || '');
                                           }
+                                          
+                                          // 🔐 TAGESVERFUEGBARKEIT für diesen MA forensisch löschen!
+                                          if (planungSettings.tagesVerfuegbarkeit?.[dateKey]?.[ma]) {
+                                            // Forensische 3x Überschreibung aller Felder inkl. id
+                                            for (let i = 0; i < 3; i++) {
+                                              await setTagesVerfuegbarkeit(dateKey, ma, {
+                                                id: crypto.randomUUID(),
+                                                typ: crypto.randomUUID(),
+                                                label: crypto.randomUUID(),
+                                                icon: crypto.randomUUID(),
+                                                farbe: crypto.randomUUID(),
+                                                created: crypto.randomUUID()
+                                              });
+                                            }
+                                            // Dann löschen
+                                            await setTagesVerfuegbarkeit(dateKey, ma, null);
+                                            console.log(`✅ Verfügbarkeit für "${ma}" am ${dateKey} forensisch gelöscht`);
+                                          }
+                                          
                                           if (navigator.vibrate) navigator.vibrate([30]);
                                         }}
                                         className="ml-auto w-5 h-5 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors sm:opacity-0 sm:group-hover/ma:opacity-100"
-                                        title={`${ma} forensisch sicher entfernen`}
+                                        title={`${ma} forensisch sicher entfernen (inkl. Verfügbarkeit)`}
                                       >
                                         ✕
                                       </button>
@@ -7604,7 +8176,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                                 if (existing) {
                                   return { ...prev, planung: prev.planung.map(p => p.id === existing.id ? { ...p, notiz: e.target.value } : p) };
                                 } else {
-                                  return { ...prev, planung: [...(prev.planung || []), { id: Date.now() + Math.random(), datum: dateKey, zeilenIndex: slotIndex, notiz: e.target.value, text: '', created: new Date().toISOString() }] };
+                                  return { ...prev, planung: [...(prev.planung || []), { id: crypto.randomUUID(), datum: dateKey, zeilenIndex: slotIndex, notiz: e.target.value, text: '', created: new Date().toISOString() }] };
                                 }
                               });
                             }}
@@ -7615,7 +8187,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                           
                           {/* Aktions-Buttons - sichtbar bei Hover */}
                           <div className="flex items-center justify-between gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {/* Mitte: Hoch/Runter Pfeile zum Verschieben */}
+                            {/* Links: Hoch/Runter Pfeile zum Verschieben */}
                             <div className="flex gap-1">
                               <button 
                                 onClick={(e) => { e.stopPropagation(); moveProjekt(dateKey, slotIndex, -1); }}
@@ -7629,9 +8201,21 @@ function ProjectPlanningModule({ appState, updateState }) {
                                 title="Nach unten verschieben"
                                 disabled={slotIndex >= zeitraster.length - 1}
                               >▼</button>
+                              {/* VERFÜGBARKEIT-BUTTON - öffnet Modal */}
+                              {(() => {
+                                const maListe = getMitarbeiterFromText(eintrag?.text || '');
+                                if (maListe.length === 0) return null;
+                                return (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setShowVerfModal({ dateKey, maListe }); }}
+                                    className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded text-sm sm:text-base text-amber-500 hover:text-amber-600 hover:bg-amber-50 active:bg-amber-100 transition-all touch-manipulation"
+                                    title="Verfügbarkeit setzen"
+                                  >📅</button>
+                                );
+                              })()}
                             </div>
                             
-                            {/* Kopieren und Löschen */}
+                            {/* Rechts: Kopieren und Löschen */}
                             <div className="flex gap-1">
                             {hatInhalt && (
                               <>
@@ -7649,7 +8233,47 @@ function ProjectPlanningModule({ appState, updateState }) {
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     if(confirm(`Löschen?`)) {
+                                      // MA aus dem Eintrag extrahieren für Verfügbarkeits-Löschung
+                                      const maListe = getMitarbeiterFromText(eintrag?.text || '');
+                                      
+                                      // Eintrag forensisch löschen
                                       await secureDelete(updateState, 'planung', eintrag.id);
+                                      
+                                      // TAGESVERFUEGBARKEIT der MA für diesen Tag forensisch löschen
+                                      if (maListe.length > 0) {
+                                        updateState(prev => {
+                                          let newTagesVerf = { ...prev.planungSettings?.tagesVerfuegbarkeit };
+                                          if (newTagesVerf[dateKey]) {
+                                            maListe.forEach(ma => {
+                                              if (newTagesVerf[dateKey]?.[ma]) {
+                                                // 3x überschreiben mit Zufallsdaten
+                                                for (let pass = 0; pass < 3; pass++) {
+                                                  newTagesVerf[dateKey][ma] = {
+                                                    id: crypto.randomUUID(),
+                                                    typ: Math.random().toString(36),
+                                                    label: Math.random().toString(36),
+                                                    icon: Math.random().toString(36).substring(0, 3),
+                                                    farbe: '#' + Math.random().toString(16).substring(2, 8),
+                                                    created: new Date(Math.random() * Date.now()).toISOString()
+                                                  };
+                                                }
+                                                delete newTagesVerf[dateKey][ma];
+                                              }
+                                            });
+                                            // Leeren Tag aufräumen
+                                            if (Object.keys(newTagesVerf[dateKey]).length === 0) {
+                                              delete newTagesVerf[dateKey];
+                                            }
+                                          }
+                                          return {
+                                            ...prev,
+                                            planungSettings: {
+                                              ...prev.planungSettings,
+                                              tagesVerfuegbarkeit: newTagesVerf
+                                            }
+                                          };
+                                        });
+                                      }
                                     }
                                   }} 
                                   className="w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded text-base sm:text-lg text-red-400 hover:text-red-600 hover:bg-red-50 active:bg-red-100 transition-all touch-manipulation"
@@ -7723,7 +8347,37 @@ function ProjectPlanningModule({ appState, updateState }) {
                 for (const kwNotiz of kwNotizen) {
                   await secureDelete(updateState, 'planung', kwNotiz.id);
                 }
-                alert(`✅ ${gesamtAnzahl} Einträge wurden forensisch sicher gelöscht.`);
+                // TAGESVERFUEGBARKEIT forensisch löschen für alle betroffenen Tage
+                updateState(prev => {
+                  let newTagesVerf = { ...prev.planungSettings?.tagesVerfuegbarkeit };
+                  visibleDates.forEach(d => {
+                    const dateKey = formatDateKey(d);
+                    if (newTagesVerf[dateKey]) {
+                      // 3x überschreiben mit Zufallsdaten (ALLE Felder inkl. ID!)
+                      for (let pass = 0; pass < 3; pass++) {
+                        Object.keys(newTagesVerf[dateKey]).forEach(ma => {
+                          newTagesVerf[dateKey][ma] = { 
+                            id: crypto.randomUUID(),
+                            typ: Math.random().toString(36), 
+                            label: Math.random().toString(36), 
+                            icon: Math.random().toString(36).substring(0, 3),
+                            farbe: '#' + Math.random().toString(16).substring(2, 8),
+                            created: new Date(Math.random() * Date.now()).toISOString()
+                          };
+                        });
+                      }
+                      delete newTagesVerf[dateKey];
+                    }
+                  });
+                  return {
+                    ...prev,
+                    planungSettings: {
+                      ...prev.planungSettings,
+                      tagesVerfuegbarkeit: newTagesVerf
+                    }
+                  };
+                });
+                alert(`✅ ${gesamtAnzahl} Einträge + Verfügbarkeiten wurden forensisch sicher gelöscht.`);
               }
             }}
             className="px-6 py-3 rounded-xl text-sm font-bold transition-all touch-manipulation bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 shadow-sm"
@@ -7739,15 +8393,27 @@ function ProjectPlanningModule({ appState, updateState }) {
       {viewMode === 'month' && (() => {
         // Sammle alle einzigartigen Projektnamen im sichtbaren Zeitraum für konsistente Zeilen
         const alleProjekteImMonat = new Set();
+        const projektZuEchterZeile = {}; // Map: Projektname -> echter zeilenIndex aus DB
         visibleDates.forEach(d => {
           const dateKey = formatDateKey(d);
           getEintraege(dateKey)
             .filter(e => e.text && e.text.trim() !== '')
-            .forEach(e => alleProjekteImMonat.add(getProjektName(e.text)));
+            .forEach(e => {
+              const projektName = getProjektName(e.text);
+              alleProjekteImMonat.add(projektName);
+              // Speichere den echten zeilenIndex (nur wenn noch nicht gesetzt)
+              if (projektZuEchterZeile[projektName] === undefined) {
+                projektZuEchterZeile[projektName] = e.zeilenIndex;
+              }
+            });
         });
         const projektListe = Array.from(alleProjekteImMonat).sort(); // Alphabetisch sortiert für konsistente Reihenfolge
-        const projektZuZeile = {}; // Map: Projektname -> Zeilennummer
-        projektListe.forEach((name, index) => { projektZuZeile[name] = index; });
+        // Für Projekte ohne echten zeilenIndex: Verwende Loop-Index als Fallback
+        projektListe.forEach((name, index) => { 
+          if (projektZuEchterZeile[name] === undefined) {
+            projektZuEchterZeile[name] = index; 
+          }
+        });
         
         return (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden -mx-2 sm:mx-0">
@@ -7875,29 +8541,64 @@ function ProjectPlanningModule({ appState, updateState }) {
                     }`}
                 >
                   {/* Tag-Header */}
-                  <div className="flex items-center justify-between px-1 py-1 border-b border-slate-100">
+                  <div className="flex items-center justify-between px-1 py-0.5 border-b border-slate-100">
                     <span className={`text-xs font-bold ${feiertag ? 'text-red-500' : isToday ? 'text-orange-600' : isWeekend ? 'text-slate-400' : 'text-slate-500'}`}>
-                      {isToday && <span className="inline-block w-5 h-5 bg-orange-500 text-white rounded-full text-center leading-5 text-[10px]">{d.getDate()}</span>}
-                      {!isToday && d.getDate()}
+                      {d.getDate()}
                     </span>
-                    <div className="flex items-center gap-0.5 opacity-40 hover:opacity-100 transition-opacity">
+                    {/* + Projekt Button - MITTIG im Header */}
+                    {!tappedMitarbeiter && !tappedAuftrag && (
+                      <button
+                        onClick={() => setShowProjektModal({ dateKey })}
+                        className="text-slate-400 hover:text-orange-500 text-[9px] px-1 hover:bg-orange-50 rounded transition-colors opacity-40 hover:opacity-100"
+                        title="Projekt hinzufügen"
+                      >+ Projekt</button>
+                    )}
+                    <div className="flex items-center gap-0.5 opacity-50 hover:opacity-100 transition-opacity">
                       {feiertag && <span className="text-[8px] text-red-400 truncate max-w-[40px]" title={feiertag}>{feiertag.substring(0,6)}..</span>}
-                      {/* + Projekt Button - dezent */}
-                      {!tappedMitarbeiter && (
-                        <button
-                          onClick={() => setShowProjektModal({ dateKey })}
-                          className="text-slate-300 hover:text-slate-500 text-[9px]"
-                          title="Projekt hinzufügen"
-                        >+</button>
-                      )}
                       {/* Secure Delete Button - dezent */}
-                      {eintraege.length > 0 && !tappedMitarbeiter && (
+                      {eintraege.length > 0 && !tappedMitarbeiter && !tappedAuftrag && (
                         <button
                           onClick={async (e) => {
                             e.stopPropagation();
-                            if (confirm(`🗑️ Alle ${eintraege.length} Einträge vom ${d.getDate()}.${d.getMonth()+1}. SICHER LÖSCHEN?\n\n(3x überschreiben + löschen)`)) {
+                            if (confirm(`🗑️ Alle ${eintraege.length} Einträge vom ${d.getDate()}.${d.getMonth()+1}. SICHER LÖSCHEN?\n\n(3x überschreiben + löschen + Verfügbarkeit)`)) {
+                              // Sammle alle MAs aus den Einträgen für Verfügbarkeit-Löschung
+                              const alleMAs = new Set();
+                              for (const eintrag of eintraege) {
+                                // MA aus Text extrahieren (Format: "Projekt: MA1, MA2" oder "MA1, MA2")
+                                const textParts = (eintrag.text || '').split(':');
+                                const maPart = textParts.length > 1 ? textParts.slice(1).join(':').trim() : textParts[0].trim();
+                                maPart.split(',').forEach(ma => {
+                                  const maName = ma.trim();
+                                  if (maName) alleMAs.add(maName);
+                                });
+                              }
+                              
+                              // Einträge forensisch löschen
                               for (const eintrag of eintraege) {
                                 await secureDelete(updateState, 'planung', eintrag.id);
+                              }
+                              
+                              // tagesVerfuegbarkeit für den gesamten Tag forensisch löschen
+                              if (planungSettings.tagesVerfuegbarkeit?.[dateKey]) {
+                                const tagVerfueg = planungSettings.tagesVerfuegbarkeit[dateKey];
+                                // Lösche Verfügbarkeit für alle MAs die in den Einträgen waren
+                                for (const maName of alleMAs) {
+                                  if (tagVerfueg[maName]) {
+                                    // Forensische 3x Überschreibung aller Felder inkl. id
+                                    for (let i = 0; i < 3; i++) {
+                                      await setTagesVerfuegbarkeit(dateKey, maName, {
+                                        id: crypto.randomUUID(),
+                                        typ: crypto.randomUUID(),
+                                        label: crypto.randomUUID(),
+                                        icon: crypto.randomUUID(),
+                                        farbe: crypto.randomUUID(),
+                                        created: crypto.randomUUID()
+                                      });
+                                    }
+                                    // Dann löschen
+                                    await setTagesVerfuegbarkeit(dateKey, maName, null);
+                                  }
+                                }
                               }
                             }
                           }}
@@ -7910,67 +8611,148 @@ function ProjectPlanningModule({ appState, updateState }) {
                   
                   {/* Projekte - horizontal nach Projektname für durchgehende Balken im Monat */}
                   <div className="p-0.5 space-y-0.5">
-                    {/* LEERE ZELLE: Projekt wählen - gestrichelte Umrandung wie Drop-Zones */}
-                    {eintraege.length === 0 && !tappedMitarbeiter && (
-                      <div 
-                        className="h-7 sm:h-6 flex items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300 transition-colors cursor-pointer"
-                        onClick={() => setShowProjektModal({ dateKey })}
-                      >
-                        <span className="text-slate-300 hover:text-slate-500 text-[10px]">
-                          + Projekt
-                        </span>
-                      </div>
-                    )}
-                    
                     {/* TAP & PLACE: Wenn MA ausgewählt und leere Zelle */}
                     {tappedMitarbeiter && eintraege.length === 0 && (
                       <div 
-                        className="h-7 sm:h-6 flex items-center justify-center rounded border border-dashed border-slate-200 bg-slate-50/50 hover:bg-slate-100 transition-colors cursor-pointer"
+                        className="group h-7 sm:h-6 flex items-center justify-center rounded border border-dashed border-cyan-200 hover:border-cyan-400 bg-transparent hover:bg-cyan-50/50 transition-all cursor-pointer"
                         onClick={() => {
-                          updateEintrag(dateKey, 0, tappedMitarbeiter);
+                          // Bei leerer Zelle: MA mit Platzhalter-Projekt einfügen
+                          // Format: "Einsatz: Mitarbeitername" damit Monatsansicht korrekt gruppiert
+                          const neuerText = `Einsatz: ${tappedMitarbeiter}`;
+                          updateEintrag(dateKey, 0, neuerText);
+                          setTappedMitarbeiter(null);
                           if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
                         }}
                       >
-                        <span className="text-slate-400 text-[10px]">
-                          + {tappedMitarbeiter}
-                        </span>
+                        <span className="text-cyan-400 group-hover:text-cyan-600 text-[10px] opacity-0 group-hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">+</span>
+                      </div>
+                    )}
+                    
+                    {/* TAP & PLACE: Wenn Auftrag ausgewählt und leere Zelle */}
+                    {tappedAuftrag && eintraege.length === 0 && (
+                      <div 
+                        className="group h-7 sm:h-6 flex items-center justify-center rounded border border-dashed border-orange-200 hover:border-orange-400 bg-transparent hover:bg-orange-50/50 transition-all cursor-pointer"
+                        onClick={() => {
+                          // Auftrag als neues Projekt einplanen
+                          const neueZeile = 0;
+                          const newEntry = {
+                            id: crypto.randomUUID(),
+                            datum: dateKey,
+                            zeilenIndex: neueZeile,
+                            text: tappedAuftrag.text,
+                            farbe: '#f97316',
+                            created: new Date().toISOString(),
+                            fromAuftrag: tappedAuftrag.id
+                          };
+                          updateState(prev => ({
+                            ...prev,
+                            planung: [...(prev.planung || []), newEntry]
+                          }));
+                          setTappedAuftrag(null);
+                          if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                        }}
+                      >
+                        <span className="text-orange-400 group-hover:text-orange-600 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">+</span>
                       </div>
                     )}
                                         {projektListe.map((projektName, zeile) => {
                       const eintrag = projektMap[projektName];
-                      const isDragOverHere = dragOverCell?.dateKey === dateKey && dragOverCell?.zeilenIndex === zeile;
+                      const echterZeilenIndex = projektZuEchterZeile[projektName] ?? zeile;
+                      const isDragOverHere = dragOverCell?.dateKey === dateKey && dragOverCell?.zeilenIndex === echterZeilenIndex;
                       
                       // Kein Eintrag für dieses Projekt an diesem Tag = leerer Platzhalter (Drop-Zone)
                       if (!eintrag) {
                         return (
                           <div 
                             key={zeile}
-                            data-drop-zone={`${dateKey}|${zeile}`}
-                            onDragOver={(e) => handleDragOver(e, dateKey, zeile)}
+                            data-drop-zone={`${dateKey}|${echterZeilenIndex}`}
+                            onDragOver={(e) => handleDragOver(e, dateKey, echterZeilenIndex)}
                             onDragLeave={handleDragLeave}
-                            onDrop={(e) => handleDrop(e, dateKey, zeile)}
+                            onDrop={(e) => handleDrop(e, dateKey, echterZeilenIndex)}
                             className={`h-7 sm:h-6 border border-dashed rounded transition-all relative cursor-pointer ${
                               isDragOverHere 
                                 ? 'border-green-400 bg-green-50 ring-1 ring-green-300 scale-105' 
                                 : 'border-slate-200 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-300'
                             }`}
-                            title={tappedMitarbeiter ? `Tippen um ${tappedMitarbeiter} hier einzufügen` : `${projektName} - heute nicht (hierher ziehen zum Hinzufügen)`}
+                            title={tappedMitarbeiter ? `Tippen um ${tappedMitarbeiter} als neuen Einsatz einzufügen` : `${projektName} - heute nicht (hierher ziehen zum Hinzufügen)`}
                           >
-                            {/* TAP & PLACE OVERLAY - KLICKBAR für leere Zellen */}
+                            {/* TAP & PLACE OVERLAY - dezent, auf Mobile leicht sichtbar */}
                             {tappedMitarbeiter && (
                               <div 
-                                className="absolute inset-0 z-30 rounded flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors"
-                                onClick={(e) => {
+                                className="group absolute inset-0 z-30 rounded flex items-center justify-center cursor-pointer border border-cyan-200 sm:border-transparent hover:border-cyan-400 bg-cyan-50/20 sm:bg-transparent hover:bg-cyan-50/40 transition-all"
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  // Neuer Eintrag - kein secureDelete nötig
-                                  const neuerText = `${projektName}: ${tappedMitarbeiter}`;
-                                  updateEintrag(dateKey, zeile, neuerText);
+                                  // WICHTIG: Neuen eigenständigen Einsatz erstellen, NICHT den Projektnamen der Zeile verwenden!
+                                  // Finde freien zeilenIndex für diesen Tag (prüfe ALLE Einträge, nicht nur sichtbare)
+                                  const alleEintraegeAmTag = (appState.planung || []).filter(p => p.datum === dateKey && !p.kwKey);
+                                  const belegteIndizes = alleEintraegeAmTag.map(e => e.zeilenIndex || 0);
+                                  let freierIndex = 0;
+                                  while (belegteIndizes.includes(freierIndex)) freierIndex++;
+                                  
+                                  // FORENSISCH SICHER: Prüfe nochmals ob wirklich frei
+                                  const existing = getEintragByZeile(dateKey, freierIndex);
+                                  if (existing?.id) {
+                                    console.log('🔐 Monatsansicht leere Zelle: Unerwarteter Eintrag wird forensisch sicher gelöscht...');
+                                    await secureDelete(updateState, 'planung', existing.id);
+                                  }
+                                  
+                                  const neuerText = `Einsatz: ${tappedMitarbeiter}`;
+                                  // Neuen Eintrag erstellen (kein Update nötig da Index frei)
+                                  const newEntry = {
+                                    id: crypto.randomUUID(),
+                                    datum: dateKey,
+                                    zeilenIndex: freierIndex,
+                                    text: neuerText,
+                                    created: new Date().toISOString()
+                                  };
+                                  updateState(prev => ({
+                                    ...prev,
+                                    planung: [...(prev.planung || []), newEntry]
+                                  }));
+                                  setTappedMitarbeiter(null);
                                   if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
                                 }}
                               >
-                                <span className="text-slate-400 text-[9px]">
-                                  + {tappedMitarbeiter}
-                                </span>
+                                <span className="text-cyan-500 text-[9px] opacity-0 group-hover:opacity-100 transition-opacity">+</span>
+                              </div>
+                            )}
+                            {/* TAP & PLACE OVERLAY für Aufträge - dezent, auf Mobile leicht sichtbar */}
+                            {tappedAuftrag && (
+                              <div 
+                                className="group absolute inset-0 z-30 rounded flex items-center justify-center cursor-pointer border border-orange-200 sm:border-transparent hover:border-orange-400 bg-orange-50/20 sm:bg-transparent hover:bg-orange-50/40 transition-all"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  // Finde freien zeilenIndex für diesen Tag (prüfe ALLE Einträge)
+                                  const alleEintraegeAmTag = (appState.planung || []).filter(p => p.datum === dateKey && !p.kwKey);
+                                  const belegteIndizes = alleEintraegeAmTag.map(e => e.zeilenIndex || 0);
+                                  let freierIndex = 0;
+                                  while (belegteIndizes.includes(freierIndex)) freierIndex++;
+                                  
+                                  // FORENSISCH SICHER: Prüfe nochmals ob wirklich frei
+                                  const existing = getEintragByZeile(dateKey, freierIndex);
+                                  if (existing?.id) {
+                                    console.log('🔐 Monatsansicht leere Zelle Auftrag: Unerwarteter Eintrag wird forensisch sicher gelöscht...');
+                                    await secureDelete(updateState, 'planung', existing.id);
+                                  }
+                                  
+                                  const newEntry = {
+                                    id: crypto.randomUUID(),
+                                    datum: dateKey,
+                                    zeilenIndex: freierIndex,
+                                    text: tappedAuftrag.text,
+                                    farbe: '#f97316',
+                                    created: new Date().toISOString(),
+                                    fromAuftrag: tappedAuftrag.id
+                                  };
+                                  updateState(prev => ({
+                                    ...prev,
+                                    planung: [...(prev.planung || []), newEntry]
+                                  }));
+                                  setTappedAuftrag(null);
+                                  if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                                }}
+                              >
+                                <span className="text-orange-500 text-[9px] opacity-0 group-hover:opacity-100 transition-opacity">+</span>
                               </div>
                             )}
                             {/* MOBILE DROP-ZONE OVERLAY */}
@@ -7978,7 +8760,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                               <div 
                                 className="absolute inset-0 z-20 rounded flex items-center justify-center"
                                 style={{ backgroundColor: isDragOverHere ? 'rgba(34, 197, 94, 0.4)' : 'rgba(251, 191, 36, 0.15)' }}
-                                data-drop-zone={`${dateKey}|${zeile}`}
+                                data-drop-zone={`${dateKey}|${echterZeilenIndex}`}
                               >
                                 {isDragOverHere && <span className="text-green-600 font-bold text-[9px]">↓</span>}
                               </div>
@@ -7990,20 +8772,20 @@ function ProjectPlanningModule({ appState, updateState }) {
                       return (
                         <div 
                           key={zeile}
-                          data-drop-zone={`${dateKey}|${zeile}`}
-                          draggable={!tappedMitarbeiter}
-                          onDragStart={(e) => !tappedMitarbeiter && handleDragStart(e, eintrag, dateKey, zeile)}
-                          onDragOver={(e) => handleDragOver(e, dateKey, zeile)}
+                          data-drop-zone={`${dateKey}|${echterZeilenIndex}`}
+                          draggable={!tappedMitarbeiter && !tappedAuftrag}
+                          onDragStart={(e) => !tappedMitarbeiter && !tappedAuftrag && handleDragStart(e, eintrag, dateKey, echterZeilenIndex)}
+                          onDragOver={(e) => handleDragOver(e, dateKey, echterZeilenIndex)}
                           onDragLeave={handleDragLeave}
-                          onDrop={(e) => handleDrop(e, dateKey, zeile)}
-                          onTouchStart={(e) => !tappedMitarbeiter && handleTouchStart(e, eintrag, dateKey, zeile)}
+                          onDrop={(e) => handleDrop(e, dateKey, echterZeilenIndex)}
+                          onTouchStart={(e) => !tappedMitarbeiter && !tappedAuftrag && handleTouchStart(e, eintrag, dateKey, echterZeilenIndex)}
                           onTouchMove={(e) => {
-                            if (draggedEntry && !tappedMitarbeiter) {
+                            if (draggedEntry && !tappedMitarbeiter && !tappedAuftrag) {
                               handleTouchMove(e, visibleDates, projektListe.length);
                             }
                           }}
                           onTouchEnd={(e) => {
-                            if (draggedEntry && !tappedMitarbeiter) {
+                            if (draggedEntry && !tappedMitarbeiter && !tappedAuftrag) {
                               handleTouchEnd(e);
                             }
                           }}
@@ -8011,12 +8793,50 @@ function ProjectPlanningModule({ appState, updateState }) {
                             // TAP & PLACE: Wenn MA ausgewählt, füge ihn zum Projekt hinzu (FORENSISCH SICHER)
                             if (tappedMitarbeiter) {
                               const alteMA = getMitarbeiterFromText(eintrag.text);
+                              const echterProjektName = getProjektName(eintrag.text); // Korrekter Projektname aus Eintrag
                               if (!alteMA.includes(tappedMitarbeiter)) {
                                 console.log('🔐 Monatsansicht onClick: Forensisch sichere Einfügung...');
                                 const neueMAListe = [...alteMA, tappedMitarbeiter];
-                                const neuerText = `${projektName}: ${neueMAListe.join(', ')}`;
-                                await updateEintragSecure(dateKey, zeile, neuerText);
+                                const neuerText = `${echterProjektName}: ${neueMAListe.join(', ')}`;
+                                await updateEintragSecure(dateKey, echterZeilenIndex, neuerText);
+                                setTappedMitarbeiter(null); // Auswahl zurücksetzen
                                 if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                              } else {
+                                setTappedMitarbeiter(null); // Auch bei schon drin zurücksetzen
+                                if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
+                              }
+                            }
+                            // TAP & PLACE: Wenn Auftrag ausgewählt, füge ihn hinzu
+                            if (tappedAuftrag) {
+                              // Prüfe ob Auftrag schon eingeplant ist für dieses Datum
+                              const existingAuftrag = (appState.planung || []).find(p => 
+                                p.datum === dateKey && p.text === tappedAuftrag.text
+                              );
+                              if (!existingAuftrag) {
+                                // Bestehenden Eintrag forensisch sicher ersetzen (gleicher zeilenIndex!)
+                                if (eintrag?.id) {
+                                  console.log('🔐 Monatsansicht: Bestehender Eintrag wird forensisch sicher ersetzt...');
+                                  await secureDelete(updateState, 'planung', eintrag.id);
+                                }
+                                const newEntry = {
+                                  id: crypto.randomUUID(),
+                                  datum: dateKey,
+                                  zeilenIndex: echterZeilenIndex, // Gleicher Index wie bestehender Eintrag!
+                                  text: tappedAuftrag.text,
+                                  farbe: '#f97316',
+                                  created: new Date().toISOString(),
+                                  fromAuftrag: tappedAuftrag.id
+                                };
+                                updateState(prev => ({
+                                  ...prev,
+                                  planung: [...(prev.planung || []), newEntry]
+                                }));
+                                setTappedAuftrag(null); // Auswahl zurücksetzen
+                                if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                              } else {
+                                // Auftrag schon eingeplant
+                                setTappedAuftrag(null); // Auch zurücksetzen
+                                if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
                               }
                             }
                           }}
@@ -8030,28 +8850,67 @@ function ProjectPlanningModule({ appState, updateState }) {
                             borderLeft: `3px solid ${getZeilenFarbeSolid(eintrag) || '#e2e8f0'}` 
                           }}
                         >
-                          {/* TAP & PLACE OVERLAY - dezent */}
+                          {/* TAP & PLACE OVERLAY - dezent, auf Mobile leicht sichtbar */}
                           {tappedMitarbeiter && (
                             <div 
-                              className="absolute inset-0 z-30 rounded flex items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors"
+                              className="group absolute inset-0 z-30 rounded flex items-center justify-center cursor-pointer border border-cyan-200 sm:border-transparent hover:border-cyan-400 bg-cyan-50/20 sm:bg-transparent hover:bg-cyan-50/40 transition-all"
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 const alteMA = getMitarbeiterFromText(eintrag.text);
+                                const echterProjektName = getProjektName(eintrag.text);
                                 if (!alteMA.includes(tappedMitarbeiter)) {
                                   console.log('🔐 Monatsansicht Overlay: Forensisch sichere Einfügung...');
                                   const neueMAListe = [...alteMA, tappedMitarbeiter];
-                                  const neuerText = `${projektName}: ${neueMAListe.join(', ')}`;
-                                  await updateEintragSecure(dateKey, zeile, neuerText);
+                                  const neuerText = `${echterProjektName}: ${neueMAListe.join(', ')}`;
+                                  await updateEintragSecure(dateKey, echterZeilenIndex, neuerText);
+                                  setTappedMitarbeiter(null);
                                   if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
                                 } else {
-                                  // MA ist schon drin
+                                  setTappedMitarbeiter(null);
                                   if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
                                 }
                               }}
                             >
-                              <span className="text-slate-400 text-[10px]">
-                                + {tappedMitarbeiter}
-                              </span>
+                              <span className="text-cyan-500 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">+</span>
+                            </div>
+                          )}
+                          {/* TAP & PLACE OVERLAY für Aufträge - dezent, auf Mobile leicht sichtbar */}
+                          {tappedAuftrag && (
+                            <div 
+                              className="group absolute inset-0 z-30 rounded flex items-center justify-center cursor-pointer border border-orange-200 sm:border-transparent hover:border-orange-400 bg-orange-50/20 sm:bg-transparent hover:bg-orange-50/40 transition-all"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                const existingAuftrag = (appState.planung || []).find(p => 
+                                  p.datum === dateKey && p.text === tappedAuftrag.text
+                                );
+                                if (!existingAuftrag) {
+                                  // Bestehenden Eintrag forensisch sicher ersetzen
+                                  if (eintrag?.id) {
+                                    console.log('🔐 Monatsansicht Overlay: Bestehender Eintrag wird forensisch sicher ersetzt...');
+                                    await secureDelete(updateState, 'planung', eintrag.id);
+                                  }
+                                  const newEntry = {
+                                    id: crypto.randomUUID(),
+                                    datum: dateKey,
+                                    zeilenIndex: echterZeilenIndex, // Gleicher Index!
+                                    text: tappedAuftrag.text,
+                                    farbe: '#f97316',
+                                    created: new Date().toISOString(),
+                                    fromAuftrag: tappedAuftrag.id
+                                  };
+                                  updateState(prev => ({
+                                    ...prev,
+                                    planung: [...(prev.planung || []), newEntry]
+                                  }));
+                                  setTappedAuftrag(null);
+                                  if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+                                } else {
+                                  setTappedAuftrag(null);
+                                  if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
+                                }
+                              }}
+                            >
+                              <span className="text-orange-500 text-[9px] opacity-0 group-hover:opacity-100 transition-opacity">+</span>
                             </div>
                           )}
                           {/* MOBILE DROP-ZONE OVERLAY */}
@@ -8059,98 +8918,159 @@ function ProjectPlanningModule({ appState, updateState }) {
                             <div 
                               className="absolute inset-0 z-20 rounded flex items-center justify-center"
                               style={{ backgroundColor: isDragOverHere ? 'rgba(34, 197, 94, 0.4)' : 'rgba(251, 191, 36, 0.15)' }}
-                              data-drop-zone={`${dateKey}|${zeile}`}
+                              data-drop-zone={`${dateKey}|${echterZeilenIndex}`}
                             >
                               {isDragOverHere && <span className="text-green-600 font-bold text-[9px]">↓</span>}
                             </div>
                           )}
-                          {/* Projektname - volle Breite */}
-                          <span className="flex-1 px-1.5 font-bold text-[11px] sm:text-[10px] leading-tight truncate text-slate-700" title={projektName}>
-                            {projektName}
-                          </span>
+                          {/* Projektname + Verfügbarkeits-Badges */}
+                          <div className="flex-1 px-1.5 flex items-center gap-1 overflow-hidden">
+                            <span className="font-bold text-[11px] sm:text-[10px] leading-tight truncate text-slate-700" title={eintrag.text}>
+                              {projektName === 'Einsatz' ? getMitarbeiterFromText(eintrag.text).join(', ') || 'Einsatz' : projektName}
+                            </span>
+                            {/* Verfügbarkeits-Badges für alle MA in diesem Eintrag */}
+                            {(() => {
+                              const maListe = getMitarbeiterFromText(eintrag.text);
+                              const verfBadges = maListe
+                                .map(ma => ({ ma, verf: getTagesVerfuegbarkeit(dateKey, ma) }))
+                                .filter(v => v.verf);
+                              if (verfBadges.length === 0) return null;
+                              return (
+                                <div className="flex gap-0.5 flex-shrink-0">
+                                  {verfBadges.slice(0, 2).map((v, idx) => (
+                                    <span 
+                                      key={idx}
+                                      className="text-[8px] px-0.5 rounded text-white"
+                                      style={{ backgroundColor: v.verf.farbe }}
+                                      title={`${v.ma}: ${v.verf.label}`}
+                                    >
+                                      {v.verf.icon}
+                                    </span>
+                                  ))}
+                                  {verfBadges.length > 2 && (
+                                    <span className="text-[8px] text-amber-600">+{verfBadges.length - 2}</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </div>
                           {/* Aktions-Buttons - sichtbar bei Hover */}
-                          <div className="absolute inset-0 flex items-center justify-center gap-2 bg-white/95 rounded transition-all z-10 opacity-0 group-hover:opacity-100">
-                            {/* Farbauswahl */}
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); setShowFarbModal({ dateKey, projektName: projektName }); }} 
-                              className="w-6 h-6 rounded-full border-2 border-white shadow-lg hover:scale-110 transition-transform touch-manipulation" 
-                              style={{ backgroundColor: getZeilenFarbeSolid(eintrag) || '#cbd5e1' }}
-                              title="Farbe ändern"
-                            ></button>
-                            {/* Links kopieren (nach Projektname) - FORENSISCH SICHER */}
+                          <div className="absolute inset-0 flex items-center justify-between px-0.5 bg-white/95 rounded transition-all z-10 opacity-0 group-hover:opacity-100">
+                            {/* LINKS: Pfeil nach links */}
                             <button 
                               onClick={async (e) => { 
                                 e.stopPropagation();
                                 const currentDate = new Date(dateKey);
                                 currentDate.setDate(currentDate.getDate() - 1);
                                 const targetDateKey = formatDateKey(currentDate);
-                                const existing = getEintraege(targetDateKey).find(e => getProjektName(e.text) === projektName);
-                                // FORENSISCH SICHER: Falls am Ziel existiert, erst löschen
-                                if (existing?.id) {
-                                  console.log('🔐 Monatsansicht ◀: Bestehender Eintrag wird forensisch sicher gelöscht...');
-                                  await secureDelete(updateState, 'planung', existing.id);
-                                }
-                                // Neuen Eintrag erstellen
-                                updateState(prev => ({
-                                  ...prev,
-                                  planung: [...(prev.planung || []), {
-                                    id: Date.now() + Math.random(),
-                                    datum: targetDateKey,
-                                    zeilenIndex: 0,
-                                    text: eintrag.text,
-                                    farbe: eintrag.farbe,
-                                    created: new Date().toISOString(),
-                                    copiedFrom: `${dateKey}#${eintrag.zeilenIndex}`
-                                  }]
-                                }));
+                                const existingSameProjekt = getEintraege(targetDateKey).find(e => getProjektName(e.text) === projektName);
+                                if (existingSameProjekt?.id) { console.log('⚠️ Projekt existiert bereits'); return; }
+                                const alleEintraegeAmZieltag = (appState.planung || []).filter(p => p.datum === targetDateKey && !p.kwKey);
+                                const belegteIndizes = alleEintraegeAmZieltag.map(e => e.zeilenIndex || 0);
+                                let freierIndex = 0;
+                                while (belegteIndizes.includes(freierIndex)) freierIndex++;
+                                const geisterEintrag = getEintragByZeile(targetDateKey, freierIndex);
+                                if (geisterEintrag?.id && !geisterEintrag.text) await secureDelete(updateState, 'planung', geisterEintrag.id);
+                                updateState(prev => ({ ...prev, planung: [...(prev.planung || []), { id: crypto.randomUUID(), datum: targetDateKey, zeilenIndex: freierIndex, text: eintrag.text, farbe: eintrag.farbe, created: new Date().toISOString(), copiedFrom: `${dateKey}#${eintrag.zeilenIndex}` }] }));
                               }} 
-                              className="w-6 h-6 flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 rounded-full text-sm font-bold transition-all touch-manipulation shadow" 
+                              className="w-5 h-5 flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 rounded text-xs font-bold transition-all touch-manipulation" 
                               title="Nach links kopieren"
                             >◀</button>
-                            {/* Rechts kopieren (nach Projektname) - FORENSISCH SICHER */}
+                            
+                            {/* MITTE: Farbauswahl, Verfügbarkeit, Löschen */}
+                            <div className="flex items-center gap-1">
+                              {/* Farbauswahl */}
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setShowFarbModal({ dateKey, projektName: projektName }); }} 
+                                className="w-5 h-5 rounded-full border-2 border-white shadow hover:scale-110 transition-transform touch-manipulation" 
+                                style={{ backgroundColor: getZeilenFarbeSolid(eintrag) || '#cbd5e1' }}
+                                title="Farbe ändern"
+                              ></button>
+                              {/* Verfügbarkeit - öffnet Modal */}
+                              {getMitarbeiterFromText(eintrag.text).length > 0 && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setShowVerfModal({ dateKey, maListe: getMitarbeiterFromText(eintrag.text) }); }}
+                                  className="w-5 h-5 flex items-center justify-center bg-amber-100 text-amber-600 hover:bg-amber-200 rounded-full text-xs transition-all touch-manipulation shadow"
+                                  title="Verfügbarkeit setzen"
+                                >📅</button>
+                              )}
+                              {/* Löschen */}
+                              <button 
+                                onClick={async (e) => { 
+                                  e.stopPropagation();
+                                  if (confirm(`"${projektName}" sicher löschen?`)) {
+                                    const zuLoeschen = getEintraege(dateKey).filter(entry => getProjektName(entry.text) === projektName);
+                                    
+                                    // Alle MA aus allen zu löschenden Einträgen sammeln
+                                    const alleMAs = new Set();
+                                    zuLoeschen.forEach(entry => {
+                                      getMitarbeiterFromText(entry.text).forEach(ma => alleMAs.add(ma));
+                                    });
+                                    
+                                    // Einträge forensisch löschen
+                                    for (const entry of zuLoeschen) await secureDelete(updateState, 'planung', entry.id);
+                                    
+                                    // TAGESVERFUEGBARKEIT der MA für diesen Tag forensisch löschen
+                                    if (alleMAs.size > 0) {
+                                      updateState(prev => {
+                                        let newTagesVerf = { ...prev.planungSettings?.tagesVerfuegbarkeit };
+                                        if (newTagesVerf[dateKey]) {
+                                          alleMAs.forEach(ma => {
+                                            if (newTagesVerf[dateKey]?.[ma]) {
+                                              // 3x überschreiben mit Zufallsdaten
+                                              for (let pass = 0; pass < 3; pass++) {
+                                                newTagesVerf[dateKey][ma] = {
+                                                  id: crypto.randomUUID(),
+                                                  typ: Math.random().toString(36),
+                                                  label: Math.random().toString(36),
+                                                  icon: Math.random().toString(36).substring(0, 3),
+                                                  farbe: '#' + Math.random().toString(16).substring(2, 8),
+                                                  created: new Date(Math.random() * Date.now()).toISOString()
+                                                };
+                                              }
+                                              delete newTagesVerf[dateKey][ma];
+                                            }
+                                          });
+                                          if (Object.keys(newTagesVerf[dateKey]).length === 0) {
+                                            delete newTagesVerf[dateKey];
+                                          }
+                                        }
+                                        return {
+                                          ...prev,
+                                          planungSettings: {
+                                            ...prev.planungSettings,
+                                            tagesVerfuegbarkeit: newTagesVerf
+                                          }
+                                        };
+                                      });
+                                    }
+                                  }
+                                }}
+                                className="w-5 h-5 flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 rounded-full text-xs font-bold touch-manipulation shadow" 
+                                title="Sicher löschen"
+                              >×</button>
+                            </div>
+                            
+                            {/* RECHTS: Pfeil nach rechts */}
                             <button 
                               onClick={async (e) => { 
                                 e.stopPropagation();
                                 const currentDate = new Date(dateKey);
                                 currentDate.setDate(currentDate.getDate() + 1);
                                 const targetDateKey = formatDateKey(currentDate);
-                                const existing = getEintraege(targetDateKey).find(e => getProjektName(e.text) === projektName);
-                                // FORENSISCH SICHER: Falls am Ziel existiert, erst löschen
-                                if (existing?.id) {
-                                  console.log('🔐 Monatsansicht ▶: Bestehender Eintrag wird forensisch sicher gelöscht...');
-                                  await secureDelete(updateState, 'planung', existing.id);
-                                }
-                                // Neuen Eintrag erstellen
-                                updateState(prev => ({
-                                  ...prev,
-                                  planung: [...(prev.planung || []), {
-                                    id: Date.now() + Math.random(),
-                                    datum: targetDateKey,
-                                    zeilenIndex: 0,
-                                    text: eintrag.text,
-                                    farbe: eintrag.farbe,
-                                    created: new Date().toISOString(),
-                                    copiedFrom: `${dateKey}#${eintrag.zeilenIndex}`
-                                  }]
-                                }));
+                                const existingSameProjekt = getEintraege(targetDateKey).find(e => getProjektName(e.text) === projektName);
+                                if (existingSameProjekt?.id) { console.log('⚠️ Projekt existiert bereits'); return; }
+                                const alleEintraegeAmZieltag = (appState.planung || []).filter(p => p.datum === targetDateKey && !p.kwKey);
+                                const belegteIndizes = alleEintraegeAmZieltag.map(e => e.zeilenIndex || 0);
+                                let freierIndex = 0;
+                                while (belegteIndizes.includes(freierIndex)) freierIndex++;
+                                const geisterEintrag = getEintragByZeile(targetDateKey, freierIndex);
+                                if (geisterEintrag?.id && !geisterEintrag.text) await secureDelete(updateState, 'planung', geisterEintrag.id);
+                                updateState(prev => ({ ...prev, planung: [...(prev.planung || []), { id: crypto.randomUUID(), datum: targetDateKey, zeilenIndex: freierIndex, text: eintrag.text, farbe: eintrag.farbe, created: new Date().toISOString(), copiedFrom: `${dateKey}#${eintrag.zeilenIndex}` }] }));
                               }}
-                              className="w-6 h-6 flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 rounded-full text-sm font-bold transition-all touch-manipulation shadow" 
+                              className="w-5 h-5 flex items-center justify-center bg-blue-100 text-blue-600 hover:bg-blue-200 rounded text-xs font-bold transition-all touch-manipulation" 
                               title="Nach rechts kopieren"
                             >▶</button>
-                            {/* Secure Delete - löscht alle Einträge mit diesem Projektnamen an diesem Tag */}
-                            <button 
-                              onClick={async (e) => { 
-                                e.stopPropagation();
-                                if (confirm(`"${projektName}" an diesem Tag sicher löschen?`)) {
-                                  const zuLoeschen = getEintraege(dateKey).filter(entry => getProjektName(entry.text) === projektName);
-                                  for (const entry of zuLoeschen) {
-                                    await secureDelete(updateState, 'planung', entry.id);
-                                  }
-                                }
-                              }}
-                              className="w-6 h-6 flex items-center justify-center bg-red-100 text-red-600 hover:bg-red-200 rounded-full text-sm font-bold touch-manipulation shadow" 
-                              title="Sicher löschen (3x überschreiben)"
-                            >×</button>
                           </div>
                         </div>
                       );
@@ -8229,7 +9149,37 @@ function ProjectPlanningModule({ appState, updateState }) {
                   for (const kwNotiz of kwNotizen) {
                     await secureDelete(updateState, 'planung', kwNotiz.id);
                   }
-                  alert(`✅ ${gesamtAnzahl} Einträge wurden forensisch sicher gelöscht.`);
+                  // TAGESVERFUEGBARKEIT forensisch löschen für alle betroffenen Tage
+                  updateState(prev => {
+                    let newTagesVerf = { ...prev.planungSettings?.tagesVerfuegbarkeit };
+                    visibleDates.forEach(d => {
+                      const dateKey = formatDateKey(d);
+                      if (newTagesVerf[dateKey]) {
+                        // 3x überschreiben mit Zufallsdaten (ALLE Felder inkl. ID!)
+                        for (let pass = 0; pass < 3; pass++) {
+                          Object.keys(newTagesVerf[dateKey]).forEach(ma => {
+                            newTagesVerf[dateKey][ma] = { 
+                              id: crypto.randomUUID(),
+                              typ: Math.random().toString(36), 
+                              label: Math.random().toString(36), 
+                              icon: Math.random().toString(36).substring(0, 3),
+                              farbe: '#' + Math.random().toString(16).substring(2, 8),
+                              created: new Date(Math.random() * Date.now()).toISOString()
+                            };
+                          });
+                        }
+                        delete newTagesVerf[dateKey];
+                      }
+                    });
+                    return {
+                      ...prev,
+                      planungSettings: {
+                        ...prev.planungSettings,
+                        tagesVerfuegbarkeit: newTagesVerf
+                      }
+                    };
+                  });
+                  alert(`✅ ${gesamtAnzahl} Einträge + Verfügbarkeiten wurden forensisch sicher gelöscht.`);
                 }
               }}
               className="px-6 py-3 rounded-xl text-sm font-bold transition-all touch-manipulation bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 shadow-sm"
@@ -8326,7 +9276,7 @@ function ProjectPlanningModule({ appState, updateState }) {
               ({alleAuftraege.length} Aufträge)
             </span>
           </h3>
-          <span className="text-xs text-slate-400">👆 Auftrag in Tabelle ziehen zum Einplanen</span>
+          <span className="text-xs text-slate-400">👆 Tippe auf Auftrag, dann auf Tag zum Einplanen</span>
         </div>
         
         {/* Suche - durchsucht auch Kundenliste */}
@@ -8350,7 +9300,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                     updateState(prev => ({
                       ...prev,
                       auftragsListe: [...(prev.auftragsListe || []), {
-                        id: Date.now() + Math.random(),
+                        id: crypto.randomUUID(),
                         text: kundeName,
                         notiz: kunde.Strasse ? `${kunde.Strasse}, ${kunde.PLZ || ''} ${kunde.Ort || ''}` : '',
                         prioritaet: (prev.auftragsListe || []).length,
@@ -8385,7 +9335,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                 updateState(prev => ({
                   ...prev,
                   auftragsListe: [...(prev.auftragsListe || []), {
-                    id: Date.now() + Math.random(),
+                    id: crypto.randomUUID(),
                     text: neuerAuftrag.trim(),
                     notiz: '',
                     prioritaet: (prev.auftragsListe || []).length,
@@ -8402,7 +9352,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                 updateState(prev => ({
                   ...prev,
                   auftragsListe: [...(prev.auftragsListe || []), {
-                    id: Date.now() + Math.random(),
+                    id: crypto.randomUUID(),
                     text: neuerAuftrag.trim(),
                     notiz: '',
                     prioritaet: (prev.auftragsListe || []).length,
@@ -8475,10 +9425,21 @@ function ProjectPlanningModule({ appState, updateState }) {
           {alleAuftraege
             .filter(a => auftragSuche.trim() === '' || a.text.toLowerCase().includes(auftragSuche.toLowerCase()))
             .sort((a, b) => (a.prioritaet || 0) - (b.prioritaet || 0))
-            .map((auftrag, index) => (
+            .map((auftrag, index) => {
+              const isSelectedForPlace = tappedAuftrag?.id === auftrag.id;
+              return (
               <div
                 key={auftrag.id}
-                draggable
+                onClick={() => {
+                  // TAP & PLACE: Toggle Auswahl für Einfügen
+                  if (isSelectedForPlace) {
+                    setTappedAuftrag(null);
+                  } else {
+                    setTappedAuftrag(auftrag);
+                    setTappedMitarbeiter(null); // Andere Auswahlen zurücksetzen
+                    if (navigator.vibrate) navigator.vibrate(50);
+                  }
+                }}
                 onDragStart={(e) => {
                   e.dataTransfer.setData('text/plain', auftrag.text);
                   e.dataTransfer.setData('auftrag', JSON.stringify(auftrag));
@@ -8585,16 +9546,20 @@ function ProjectPlanningModule({ appState, updateState }) {
                   setDraggedEntry(null);
                   setDragOverCell(null);
                 }}
-                className={`flex items-center gap-2 p-2 rounded-lg border transition-all touch-manipulation cursor-grab active:cursor-grabbing ${
-                  draggedAuftrag?.id === auftrag.id 
-                    ? 'border-orange-400 bg-orange-50 ring-2 ring-orange-300' 
-                    : auftrag.isAngebot 
-                      ? 'border-blue-300 bg-blue-50 hover:bg-blue-100' 
-                      : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
+                className={`flex items-center gap-2 p-2 rounded-lg border transition-all touch-manipulation cursor-pointer ${
+                  isSelectedForPlace
+                    ? 'border-orange-500 bg-orange-100 ring-2 ring-orange-400 scale-[1.02]'
+                    : draggedAuftrag?.id === auftrag.id 
+                      ? 'border-orange-400 bg-orange-50 ring-2 ring-orange-300' 
+                      : auftrag.isAngebot 
+                        ? 'border-blue-300 bg-blue-50 hover:bg-blue-100' 
+                        : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
                 }`}
               >
-                {/* Drag Handle - für alle Aufträge */}
-                <span className="text-slate-400 text-lg cursor-grab">≡</span>
+                {/* Auswahl-Indikator für Tap & Place */}
+                <span className={`text-lg ${isSelectedForPlace ? 'text-orange-600' : 'text-slate-400'}`}>
+                  {isSelectedForPlace ? '✓' : '📋'}
+                </span>
                 
                 {/* Badge für bestätigte Angebote */}
                 {auftrag.isAngebot && (
@@ -8668,7 +9633,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                   ×
                 </button>
               </div>
-            ))}
+            );})}
           
           {alleAuftraege.length === 0 && (
             <div className="text-center py-8 text-slate-400">
@@ -8681,6 +9646,59 @@ function ProjectPlanningModule({ appState, updateState }) {
       </div>
         );
       })()}
+      
+      {/* Privacy Footer - Plantafel (unter Auftragsliste) */}
+      <div className="p-4 md:p-6">
+        <div className="privacy-footer no-print">
+          {/* Speicher-Warnung bei >90% */}
+          {speicherInfo?.istKritisch && (
+            <div className="bg-red-900/50 border-2 border-red-500 rounded-lg p-4 mb-4 text-center">
+              <div className="text-2xl mb-2">⚠️</div>
+              <strong className="text-red-300 text-sm">Speicher fast voll ({speicherInfo.prozent}%)</strong>
+              <p className="text-red-200 text-xs mt-2">
+                Bitte Stammdaten exportieren und mit einem frischen Vault neu starten.
+              </p>
+            </div>
+          )}
+          
+          {/* Speicher-Übersicht */}
+          <div className="bg-slate-800/80 rounded-lg p-3 mb-4 border border-slate-600/30">
+            <div className="flex items-center justify-between mb-2 text-xs">
+              <span className="text-slate-400 font-semibold">💾 Vault-Speicher</span>
+              <span className={speicherInfo?.istKritisch ? 'text-red-400' : speicherInfo?.istWarnung ? 'text-yellow-400' : 'text-green-400'} style={{fontWeight: 700}}>
+                {speicherInfo?.prozent || 0}% belegt ({speicherInfo?.belegtKB || 0} KB / {Math.round((speicherInfo?.maxDataSize || 0)/1024)} KB)
+              </span>
+            </div>
+            <div className="bg-slate-900 rounded h-2 overflow-hidden">
+              <div 
+                className={`h-full rounded transition-all ${speicherInfo?.istKritisch ? 'bg-red-500' : speicherInfo?.istWarnung ? 'bg-yellow-500' : 'bg-green-500'}`}
+                style={{width: `${Math.min(100, speicherInfo?.prozent || 0)}%`}}
+              />
+            </div>
+            <div className="flex justify-between mt-1 text-[10px] text-slate-500">
+              <span>{(appState.planung || []).length} Planungs-Einträge • {(appState.auftragsListe || []).length} Aufträge</span>
+              <span>{speicherInfo?.freiKB || 0} KB frei</span>
+            </div>
+          </div>
+          
+          <div className="privacy-footer-motto">
+            <span className="shield">🛡️</span>Wir speichern nichts. Wir sehen nichts.
+          </div>
+          <p className="privacy-footer-text">
+            <strong>Zero-Knowledge-Prinzip:</strong> Ihre Daten werden ausschließlich lokal in Ihrem Browser (IndexedDB) gespeichert und Backups mit <strong>AES-256-GCM</strong> verschlüsselt. Kein Server, keine Cloud, keine Datensammlung – Ihre Plantafel gehört nur Ihnen.
+          </p>
+          <div className="privacy-footer-badges">
+            <span className="privacy-badge green">✓ Lokale Speicherung</span>
+            <span className="privacy-badge green">✓ Forensisch sicher</span>
+            <span className="privacy-badge">🔐 Militärgrad-Verschlüsselung</span>
+            <span className="privacy-badge">💾 IndexedDB</span>
+            <span className="privacy-badge green">✓ DSGVO-konform</span>
+          </div>
+          <div className="privacy-footer-copyright">
+            © 2026 Business Suite – Professionelle Plantafel mit maximaler Datensicherheit
+          </div>
+        </div>
+      </div>
       
       {/* Neuer Kunde Modal */}
       {showKundeModal && (
@@ -8746,6 +9764,99 @@ function ProjectPlanningModule({ appState, updateState }) {
                 Schließen
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* VERFÜGBARKEIT Modal - wie Farbauswahl */}
+      {showVerfModal && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center p-4" 
+          style={{ zIndex: 99999, backgroundColor: 'rgba(0,0,0,0.7)' }} 
+          onClick={() => setShowVerfModal(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl border-4 border-amber-500" 
+            style={{ zIndex: 100000, animation: 'fadeIn 0.2s ease' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold text-slate-800 mb-2 text-center">📅 Verfügbarkeit</h3>
+            <p className="text-sm text-slate-500 mb-4 text-center">
+              {showVerfModal.dateKey && new Date(showVerfModal.dateKey).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
+            </p>
+            
+            {/* MA-Liste mit Verfügbarkeitsauswahl */}
+            <div className="space-y-3 mb-4 max-h-80 overflow-y-auto">
+              {(showVerfModal.maListe || []).map((ma, maIdx) => {
+                const currentVerf = getTagesVerfuegbarkeit(showVerfModal.dateKey, ma);
+                return (
+                  <div key={maIdx} className="bg-slate-50 rounded-xl p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-slate-700">👤 {ma}</span>
+                      {currentVerf && (
+                        <span 
+                          className="text-xs px-2 py-1 rounded-full text-white font-medium"
+                          style={{ backgroundColor: currentVerf.farbe }}
+                        >
+                          {currentVerf.icon} {currentVerf.label}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { id: 'arbeit', label: 'Arbeit', icon: '💼', farbe: '#16a34a' },
+                        { id: 'urlaub', label: 'Urlaub', icon: '🏖️', farbe: '#22c55e' },
+                        { id: 'krank', label: 'Krank', icon: '🤒', farbe: '#ef4444' },
+                        { id: 'frei', label: 'Frei', icon: '🏠', farbe: '#3b82f6' },
+                        { id: 'teilzeit', label: 'Teilzeit', icon: '⏰', farbe: '#a855f7' },
+                        { id: 'aussendienst', label: 'Außend.', icon: '🚗', farbe: '#f97316' },
+                        { id: 'schulung', label: 'Schulung', icon: '📚', farbe: '#06b6d4' },
+                        { id: 'elternzeit', label: 'Elternz.', icon: '👶', farbe: '#ec4899' }
+                      ].map(opt => (
+                        <button
+                          key={opt.id}
+                          onClick={() => {
+                            setTagesVerfuegbarkeit(showVerfModal.dateKey, ma, opt);
+                            if (navigator.vibrate) navigator.vibrate(30);
+                          }}
+                          className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all touch-manipulation ${
+                            currentVerf?.typ === opt.id 
+                              ? 'ring-2 ring-offset-2 ring-slate-400 scale-105' 
+                              : 'hover:scale-105 active:scale-95'
+                          }`}
+                          style={{ backgroundColor: opt.farbe, color: 'white' }}
+                          title={opt.label}
+                        >
+                          <span className="text-lg">{opt.icon}</span>
+                          <span className="text-[9px] font-medium mt-0.5">{opt.label}</span>
+                        </button>
+                      ))}
+                      {/* Entfernen-Button */}
+                      {currentVerf && (
+                        <button
+                          onClick={() => {
+                            setTagesVerfuegbarkeit(showVerfModal.dateKey, ma, currentVerf);
+                            if (navigator.vibrate) navigator.vibrate(30);
+                          }}
+                          className="flex flex-col items-center justify-center p-2 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 transition-all touch-manipulation"
+                          title="Entfernen"
+                        >
+                          <span className="text-lg">✕</span>
+                          <span className="text-[9px] font-medium mt-0.5">Entf.</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            <button 
+              onClick={() => setShowVerfModal(null)} 
+              className="w-full py-4 bg-amber-500 text-white rounded-xl hover:bg-amber-600 active:bg-amber-700 font-bold text-base touch-manipulation"
+            >
+              Schließen
+            </button>
           </div>
         </div>
       )}
@@ -8898,7 +10009,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                       }
                       // Neuen Eintrag anlegen
                       const newEntry = {
-                        id: Date.now() + Math.random(),
+                        id: crypto.randomUUID(),
                         datum: dateKey,
                         zeilenIndex: pendingProjekt.zeilenIndex,
                         text: pendingProjekt.text,
@@ -8918,7 +10029,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                         neueZeile++;
                       }
                       const newEntry = {
-                        id: Date.now() + Math.random(),
+                        id: crypto.randomUUID(),
                         datum: dateKey,
                         zeilenIndex: neueZeile,
                         text: pendingProjekt.text,
@@ -9097,6 +10208,117 @@ function SettingsModule({ appState, updateState, cloudConfig, setCloudConfig, tr
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1">Steuernummer / USt-ID</label>
                   <input type="text" className="w-full p-3 border border-slate-300 rounded-lg" value={fd.steuernummer || ''} onChange={e => updateFd('steuernummer', e.target.value)} />
+                </div>
+              </div>
+            </div>
+            
+            {/* LOGO UPLOAD BEREICH */}
+            <div className="mt-8 pt-8 border-t border-slate-200">
+              <h3 className="font-bold text-slate-400 uppercase text-xs tracking-wider mb-4">🖼️ Firmenlogo</h3>
+              
+              <div className="flex flex-col md:flex-row gap-6 items-start">
+                {/* Logo Vorschau */}
+                <div className="w-full md:w-64 flex-shrink-0">
+                  {(appState.einstellungen?.logo || fd.logo) ? (
+                    <div className="bg-slate-50 border-2 border-slate-200 rounded-lg p-4 text-center">
+                      <img 
+                        src={appState.einstellungen?.logo || fd.logo} 
+                        alt="Firmenlogo" 
+                        className="max-w-full max-h-32 mx-auto object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="bg-slate-50 border-2 border-dashed border-slate-300 rounded-lg p-6 text-center text-slate-400">
+                      <div className="text-3xl mb-2">🖼️</div>
+                      <div className="text-sm">Kein Logo vorhanden</div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Upload Controls */}
+                <div className="flex-1">
+                  <div className="flex flex-wrap gap-3 mb-4">
+                    <label className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg font-bold cursor-pointer transition-colors">
+                      📤 Logo wählen
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files[0];
+                          if (!file) return;
+                          
+                          if (!file.type.startsWith('image/')) {
+                            alert('Bitte wählen Sie eine Bilddatei aus.');
+                            return;
+                          }
+                          
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            const img = new Image();
+                            img.onload = () => {
+                              // Canvas erstellen
+                              const canvas = document.createElement('canvas');
+                              const ctx = canvas.getContext('2d');
+                              
+                              // Resize-Logik: Max 800px Breite
+                              let width = img.width;
+                              let height = img.height;
+                              const maxWidth = 800;
+                              
+                              if (width > maxWidth) {
+                                const ratio = maxWidth / width;
+                                width = maxWidth;
+                                height = Math.round(height * ratio);
+                              }
+                              
+                              canvas.width = width;
+                              canvas.height = height;
+                              ctx.drawImage(img, 0, 0, width, height);
+                              
+                              // JPEG mit 80% Qualität
+                              const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                              
+                              // In einstellungen.logo UND firmenDaten.logo speichern
+                              updateState(prev => ({
+                                ...prev,
+                                einstellungen: { ...prev.einstellungen, logo: dataUrl },
+                                firmenDaten: { ...prev.firmenDaten, logo: dataUrl }
+                              }));
+                            };
+                            img.src = ev.target.result;
+                          };
+                          reader.readAsDataURL(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                    
+                    {(appState.einstellungen?.logo || fd.logo) && (
+                      <button 
+                        onClick={() => {
+                          if (confirm('Möchten Sie das Logo wirklich löschen?')) {
+                            updateState(prev => ({
+                              ...prev,
+                              einstellungen: { ...prev.einstellungen, logo: '' },
+                              firmenDaten: { ...prev.firmenDaten, logo: '' }
+                            }));
+                          }
+                        }}
+                        className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg font-bold transition-colors"
+                      >
+                        🗑️ Löschen
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="text-sm text-slate-500 space-y-1">
+                    <p><strong>ℹ️ Max. 800px Breite</strong> (wird automatisch optimiert)</p>
+                    <p className="text-xs text-slate-400">
+                      Unterstützte Formate: JPG, PNG, GIF, WebP.<br/>
+                      Das Logo wird für Rechnungen, Angebote und Dokumente verwendet.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -9613,7 +10835,8 @@ function MainApp() {
     const isEditingMuster = aktivesDok.muster && !forceMuster;
     
     // Prüfen ob das Dokument mit dieser ID noch existiert
-    const existiertInListe = aktivesDok.id !== null && aktivesDok.id > 0 && rechnungen.some(d => d.id === aktivesDok.id);
+    // ID kann UUID (String) oder alte Number sein - daher truthy check statt > 0
+    const existiertInListe = aktivesDok.id && aktivesDok.id !== '' && rechnungen.some(d => d.id === aktivesDok.id);
     
     // NEU: Prüfen ob der Dokumenttyp gewechselt wurde (z.B. Angebot → Rechnung)
     const originalDok = existiertInListe ? rechnungen.find(d => d.id === aktivesDok.id) : null;
@@ -9654,14 +10877,16 @@ function MainApp() {
     }
     
     // Neue ID generieren wenn: Muster-Bearbeitung, Typ-Wechsel, keine ID vorhanden, oder ID existiert nicht mehr in Liste
-    const brauchNeueId = isEditingMuster || typWurdeGewechselt || !aktivesDok.id || aktivesDok.id < 0 || !existiertInListe;
+    // UUID-kompatibel: truthy check statt numerischer Vergleich
+    const brauchNeueId = isEditingMuster || typWurdeGewechselt || !aktivesDok.id || aktivesDok.id === '' || !existiertInListe;
     
     // entwurfId entfernen für gespeichertes Dokument
     const { entwurfId, ...dokOhneEntwurfId } = aktivesDok;
     
     const neu = {
       ...dokOhneEntwurfId,
-      id: brauchNeueId ? Date.now() : aktivesDok.id,
+      // FORENSISCH SICHER: Zufällige UUID statt Date.now() - verrät nicht die Erstellzeit
+      id: brauchNeueId ? crypto.randomUUID() : aktivesDok.id,
       nummer: nr,
       // Bei Muster-Bearbeitung: muster auf false setzen
       muster: isEditingMuster ? false : (forceMuster || aktivesDok.muster)
@@ -9850,7 +11075,8 @@ function MainApp() {
   };
 
   // Hilfsfunktion: Prüft ob aktives Dokument ein gespeichertes ist (nicht Entwurf)
-  const istGespeichertesDokument = aktivesDok.id && aktivesDok.id > 0 && !aktivesDok.entwurfId;
+  // UUID-kompatibel: truthy check statt > 0
+  const istGespeichertesDokument = aktivesDok.id && aktivesDok.id !== '' && !aktivesDok.entwurfId;
   
   // Hilfsfunktion: Erstellt Kopie als neuen Entwurf
   const erstelleKopieAlsEntwurf = () => {
@@ -9920,7 +11146,7 @@ function MainApp() {
 
   const addPos = m => {
     const neuePosition = {
-      id: Date.now(),
+      id: crypto.randomUUID(), // Forensisch sicher: keine Zeitinfo
       name: m.Name,
       menge: "1",
       einheit: m.Einheit,
@@ -10655,7 +11881,7 @@ function MainApp() {
                   </div>
                   <button onClick={() => {
                     if (!neuMat.name.trim()) return;
-                    const m = { Name: neuMat.name, Einheit: neuMat.einheit, Verkaufspreis: neuMat.preis.replace(',', '.'), id: Date.now() };
+                    const m = { Name: neuMat.name, Einheit: neuMat.einheit, Verkaufspreis: neuMat.preis.replace(',', '.'), id: crypto.randomUUID() };
                     saveToDB({ ...db, material: [...db.material, m] });
                     setNeuMat({ name: "", einheit: "Stk", preis: "0,00" });
                     setShowAddPosition(false);
@@ -10721,7 +11947,7 @@ function MainApp() {
                   <button onClick={() => {
                     if (!neuKunde.name.trim()) return;
                     const k = { 
-                      id: Date.now(), 
+                      id: crypto.randomUUID(), 
                       anrede: neuKunde.anrede,
                       Organisation: neuKunde.name,
                       name: neuKunde.name,
@@ -10915,7 +12141,7 @@ function MainApp() {
                   <input type="text" placeholder="Ort" className="w-2/3 p-2 text-black rounded text-xs" value={neuKunde.ort} onChange={e => setNeuKunde({...neuKunde, ort: e.target.value})} />
                 </div>
                 <button onClick={() => {
-                  const k = { ...neuKunde, id: Date.now() };
+                  const k = { ...neuKunde, id: crypto.randomUUID() };
                   saveToDB({ ...db, kunden: [k, ...db.kunden] });
                   waehleKunde(k);
                   setNeuKunde({ anrede: "Organisation", name: "", strasse: "", plz: "", ort: "" });
@@ -10932,7 +12158,7 @@ function MainApp() {
                   <input type="text" placeholder="Preis €" className="w-1/2 p-2 text-black rounded text-xs" value={neuMat.preis} onChange={e => setNeuMat({...neuMat, preis: e.target.value})} />
                 </div>
                 <button onClick={() => {
-                  const m = { Name: neuMat.name, Einheit: neuMat.einheit, Verkaufspreis: neuMat.preis.replace(',', '.'), id: Date.now() };
+                  const m = { Name: neuMat.name, Einheit: neuMat.einheit, Verkaufspreis: neuMat.preis.replace(',', '.'), id: crypto.randomUUID() };
                   saveToDB({ ...db, material: [m, ...db.material] });
                   setNeuMat({ name: "", einheit: "Stk", preis: "0,00" });
                 }} className="mt-2 w-full bg-teal-600 py-2 rounded font-bold uppercase text-xs">
