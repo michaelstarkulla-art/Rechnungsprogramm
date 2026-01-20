@@ -933,6 +933,55 @@ const SecureVault = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FORENSISCHE SICHERHEIT: Zentrale Sortierungsfunktion
+// Sortiert alle Arrays vor dem Speichern, damit die physikalische Reihenfolge
+// im JSON konsistent ist und nachträgliche Einfügungen nicht erkennbar sind
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function prepareStateForStorage(state) {
+  if (!state) return state;
+  
+  return {
+    ...state,
+    // Rechnungen nach Datum sortieren (älteste zuerst)
+    rechnungen: [...(state.rechnungen || [])].sort((a, b) => {
+      const dateA = new Date(a.datum || a.rechnungsdatum || '1970-01-01');
+      const dateB = new Date(b.datum || b.rechnungsdatum || '1970-01-01');
+      return dateA - dateB;
+    }),
+    // Angebote nach Datum sortieren
+    angebote: [...(state.angebote || [])].sort((a, b) => {
+      const dateA = new Date(a.datum || '1970-01-01');
+      const dateB = new Date(b.datum || '1970-01-01');
+      return dateA - dateB;
+    }),
+    // Entwürfe nach Datum sortieren
+    entwuerfe: [...(state.entwuerfe || [])].sort((a, b) => {
+      const dateA = new Date(a.datum || '1970-01-01');
+      const dateB = new Date(b.datum || '1970-01-01');
+      return dateA - dateB;
+    }),
+    // Kunden alphabetisch sortieren
+    kunden: [...(state.kunden || [])].sort((a, b) => 
+      (a.Organisation || a.name || '').localeCompare(b.Organisation || b.name || '')
+    ),
+    // Material alphabetisch sortieren
+    material: [...(state.material || [])].sort((a, b) => 
+      (a.Name || a.name || '').localeCompare(b.Name || b.name || '')
+    ),
+    // Planung nach Datum und Zeile sortieren
+    planung: [...(state.planung || [])].sort((a, b) => {
+      if (a.datum !== b.datum) return (a.datum || '').localeCompare(b.datum || '');
+      return (a.zeilenIndex || 0) - (b.zeilenIndex || 0);
+    }),
+    // Auftragsliste nach ID sortieren (UUID-alphabetisch)
+    auftragsListe: [...(state.auftragsListe || [])].sort((a, b) => 
+      (a.id || '').localeCompare(b.id || '')
+    )
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // LEGACY ENCRYPTION (für Backup-Export ohne Fixed-Size)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2622,7 +2671,9 @@ function VaultProvider({ children }) {
     setAppState(newState);
     
     // 6. Lokal speichern (OHNE erneuten Cloud-Upload!)
-    const encrypted = await workerEncrypt(newState, SecureVault.encryptionKey, true);
+    // FORENSISCHE SICHERHEIT: Sortieren vor dem Speichern
+    const sortedState = prepareStateForStorage(newState);
+    const encrypted = await workerEncrypt(sortedState, SecureVault.encryptionKey, true);
     const db = await SecureVault.openDB();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(VAULT_CONFIG.STORE_NAME, 'readwrite');
@@ -2659,8 +2710,9 @@ function VaultProvider({ children }) {
     
     setSyncStatus('uploading');
     
-    // 1. Verschlüsseln
-    const encrypted = await workerEncrypt(stateToUpload, SecureVault.encryptionKey, true);
+    // 1. Verschlüsseln (FORENSISCHE SICHERHEIT: Sortieren vor dem Speichern)
+    const sortedStateToUpload = prepareStateForStorage(stateToUpload);
+    const encrypted = await workerEncrypt(sortedStateToUpload, SecureVault.encryptionKey, true);
     const blob = new Blob([encrypted], { type: 'application/octet-stream' });
     
     // 2. Auth & Upload-URL holen
@@ -2811,8 +2863,9 @@ function VaultProvider({ children }) {
         }
       };
       
-      // Lokal speichern
-      const encrypted = await workerEncrypt(stateWithMeta, SecureVault.encryptionKey, true);
+      // Lokal speichern (FORENSISCHE SICHERHEIT: Sortieren vor dem Speichern)
+      const sortedStateWithMeta = prepareStateForStorage(stateWithMeta);
+      const encrypted = await workerEncrypt(sortedStateWithMeta, SecureVault.encryptionKey, true);
       const db = await SecureVault.openDB();
       await new Promise((resolve, reject) => {
         const tx = db.transaction(VAULT_CONFIG.STORE_NAME, 'readwrite');
@@ -2826,8 +2879,8 @@ function VaultProvider({ children }) {
       setLastSaved(new Date());
       pendingStateRef.current = null;
       
-      // Dann zum Server hochladen
-      return await uploadToServer(stateWithMeta);
+      // Dann zum Server hochladen (sortedStateWithMeta wird weiterverwendet)
+      return await uploadToServer(sortedStateWithMeta);
       
     } catch (error) {
       console.error('❌ [SmartSync] Fehler:', error);
@@ -2962,31 +3015,8 @@ function VaultProvider({ children }) {
     
     setSaveStatus('saving');
     try {
-      // FORENSISCHE SICHERHEIT: Arrays sortieren vor dem Speichern
-      // Damit ist die physikalische Reihenfolge im JSON immer konsistent
-      // und nachträglich eingefügte Einträge sind nicht erkennbar
-      const sortedState = {
-        ...stateToSave,
-        // Rechnungen/Angebote nach Datum sortieren (älteste zuerst)
-        rechnungen: [...(stateToSave.rechnungen || [])].sort((a, b) => {
-          const dateA = new Date(a.datum || a.rechnungsdatum || '1970-01-01');
-          const dateB = new Date(b.datum || b.rechnungsdatum || '1970-01-01');
-          return dateA - dateB;
-        }),
-        // Kunden alphabetisch sortieren
-        kunden: [...(stateToSave.kunden || [])].sort((a, b) => 
-          (a.Organisation || a.name || '').localeCompare(b.Organisation || b.name || '')
-        ),
-        // Material alphabetisch sortieren
-        material: [...(stateToSave.material || [])].sort((a, b) => 
-          (a.Name || a.name || '').localeCompare(b.Name || b.name || '')
-        ),
-        // Planung nach Datum sortieren
-        planung: [...(stateToSave.planung || [])].sort((a, b) => {
-          if (a.datum !== b.datum) return (a.datum || '').localeCompare(b.datum || '');
-          return (a.zeilenIndex || 0) - (b.zeilenIndex || 0);
-        })
-      };
+      // FORENSISCHE SICHERHEIT: Zentrale Sortierungsfunktion verwenden
+      const sortedState = prepareStateForStorage(stateToSave);
       
       const stateWithMeta = {
         ...sortedState,
@@ -5970,6 +6000,7 @@ function ProjectPlanningModule({ appState, updateState }) {
   const [neuerKundeName, setNeuerKundeName] = useState('');
   const [neuerKundeFarbe, setNeuerKundeFarbe] = useState('#f97316');
   const [activeCell, setActiveCell] = useState(null);
+  const [activeTouchCell, setActiveTouchCell] = useState(null); // MOBILE: Zelle mit sichtbaren Buttons nach erstem Tap
   const [toolbarTab, setToolbarTab] = useState('kunden');
   const [selectedMitarbeiter, setSelectedMitarbeiter] = useState(null); // Ausgewählter MA für Skills
   const [tappedMitarbeiter, setTappedMitarbeiter] = useState(null); // TAP & PLACE: Ausgewählter MA zum Einfügen
@@ -5983,6 +6014,89 @@ function ProjectPlanningModule({ appState, updateState }) {
   const [neuesProjekt, setNeuesProjekt] = useState(''); // Eingabe für neues Projekt
   const [projektSuche, setProjektSuche] = useState(''); // Suche im Modal
   const [pendingProjekt, setPendingProjekt] = useState(null); // { dateKey, text } - wartet auf Farbauswahl
+  
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // MOBILE TOUCH-FIRST-TAP LOGIK
+  // Erster Tap aktiviert die Zelle (zeigt Buttons), zweiter Tap löst Aktion aus
+  // ═══════════════════════════════════════════════════════════════════════════════
+  const [isMobileDevice, setIsMobileDevice] = useState(false);
+  
+  // Mobile-Detection beim ersten Render
+  React.useEffect(() => {
+    const checkMobile = () => {
+      const isMobile = typeof window !== 'undefined' && (
+        'ontouchstart' in window || 
+        navigator.maxTouchPoints > 0 ||
+        window.matchMedia('(pointer: coarse)').matches ||
+        window.innerWidth < 768 // Fallback: Kleine Screens
+      );
+      setIsMobileDevice(isMobile);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
+  // Prüft ob diese Zelle gerade aktiv ist (Touch-First-Tap)
+  const isTouchCellActive = (dateKey, zeilenIndex, projektName = null) => {
+    if (!activeTouchCell) return false;
+    if (projektName !== null) {
+      // Monatsansicht: Vergleiche nach Projekt
+      return activeTouchCell.dateKey === dateKey && activeTouchCell.projektName === projektName;
+    }
+    // Wochenansicht: Vergleiche nach zeilenIndex
+    return activeTouchCell.dateKey === dateKey && activeTouchCell.zeilenIndex === zeilenIndex;
+  };
+  
+  // Setzt die Touch-aktive Zelle (oder deaktiviert bei erneutem Tap)
+  const handleTouchCellTap = (dateKey, zeilenIndex, projektName = null) => {
+    // Auf Desktop: Sofort true zurückgeben (keine Touch-Logik)
+    if (!isMobileDevice) return true;
+    
+    const isCurrentlyActive = isTouchCellActive(dateKey, zeilenIndex, projektName);
+    
+    if (isCurrentlyActive) {
+      // Zweiter Tap auf gleiche Zelle -> Aktion ausführen
+      return true;
+    } else {
+      // Erster Tap -> Zelle aktivieren, KEINE Aktion
+      setActiveTouchCell(projektName !== null 
+        ? { dateKey, projektName } 
+        : { dateKey, zeilenIndex }
+      );
+      if (navigator.vibrate) navigator.vibrate(10); // Kurzes Feedback
+      return false;
+    }
+  };
+  
+  // Click-Outside Handler zum Deaktivieren der Touch-Zelle
+  React.useEffect(() => {
+    if (!activeTouchCell) return;
+    
+    const handleClickOutside = (e) => {
+      // Prüfe ob Klick innerhalb einer Plantafel-Zelle war
+      const isInsideCell = e.target.closest('[data-plantafel-cell]');
+      const isInsideButton = e.target.closest('button');
+      const isInsideModal = e.target.closest('[role="dialog"]');
+      
+      // Wenn außerhalb einer Zelle und kein Button/Modal -> deaktivieren
+      if (!isInsideCell && !isInsideButton && !isInsideModal) {
+        setActiveTouchCell(null);
+      }
+    };
+    
+    // Verzögert hinzufügen, damit der aktuelle Click nicht direkt deaktiviert
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }, 100);
+    
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [activeTouchCell]);
   
   // ═══════════════════════════════════════════════════════════════════════════════
   // SPEICHER-ÜBERWACHUNG - Für Privacy Footer
@@ -7964,11 +8078,13 @@ function ProjectPlanningModule({ appState, updateState }) {
                     const isActive = activeCell?.dateKey === dateKey && activeCell?.zeilenIndex === slotIndex;
                     const hatInhalt = eintrag?.text && eintrag.text.trim() !== '';
                     const isDragOver = dragOverCell?.dateKey === dateKey && dragOverCell?.zeilenIndex === slotIndex;
+                    const isTouchActive = isTouchCellActive(dateKey, slotIndex); // MOBILE Touch-First-Tap
                     
                     return (
                       <td 
                         key={dayIndex}
                         data-drop-zone={`${dateKey}|${slotIndex}`}
+                        data-plantafel-cell="true"
                         draggable={hatInhalt && !tappedMitarbeiter}
                         onDragStart={(e) => hatInhalt && !tappedMitarbeiter && handleDragStart(e, eintrag, dateKey, slotIndex)}
                         onDragOver={(e) => !tappedMitarbeiter && handleDragOver(e, dateKey, slotIndex)}
@@ -8019,6 +8135,14 @@ function ProjectPlanningModule({ appState, updateState }) {
                             return;
                           }
                           
+                          // MOBILE TOUCH-FIRST-TAP: Bei Zelle mit Inhalt erst Buttons zeigen
+                          if (hatInhalt && isMobileDevice) {
+                            if (!handleTouchCellTap(dateKey, slotIndex)) {
+                              // Erster Tap -> nur Buttons zeigen, keine Aktion
+                              return;
+                            }
+                          }
+                          
                           // Klick auf leere Zelle = Projekt hinzufügen
                           if (!hatInhalt) {
                             setShowProjektModal({ dateKey, zeilenIndex: slotIndex });
@@ -8031,7 +8155,9 @@ function ProjectPlanningModule({ appState, updateState }) {
                           'bg-white hover:bg-slate-50'
                         } ${isActive ? 'ring-2 ring-inset ring-orange-400' : ''} ${
                           isDragOver ? 'ring-2 ring-inset ring-green-400 bg-green-50 scale-[1.02]' : ''
-                        } ${hatInhalt && !tappedMitarbeiter ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                        } ${hatInhalt && !tappedMitarbeiter ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                          isTouchActive ? 'ring-2 ring-inset ring-orange-400 shadow-lg' : ''
+                        }`}
                         style={{ backgroundColor: hatInhalt && !isDragOver ? getZeilenFarbe(eintrag) : undefined, position: 'relative' }}
                       >
                         {/* TAP & PLACE OVERLAY - dezent, auf Mobile leicht sichtbar */}
@@ -8217,7 +8343,13 @@ function ProjectPlanningModule({ appState, updateState }) {
                                           
                                           if (navigator.vibrate) navigator.vibrate([30]);
                                         }}
-                                        className="ml-auto w-5 h-5 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors sm:opacity-0 sm:group-hover/ma:opacity-100"
+                                        className={`ml-auto w-5 h-5 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors ${
+                                          isTouchActive 
+                                            ? 'opacity-100 pointer-events-auto' 
+                                            : isMobileDevice 
+                                              ? 'opacity-0 pointer-events-none' 
+                                              : 'sm:opacity-0 sm:group-hover/ma:opacity-100 pointer-events-auto'
+                                        }`}
                                         title={`${ma} forensisch sicher entfernen (inkl. Verfügbarkeit)`}
                                       >
                                         ✕
@@ -8248,8 +8380,17 @@ function ProjectPlanningModule({ appState, updateState }) {
                             className="w-full mt-3 px-1 py-0.5 text-[9px] text-slate-500 bg-slate-50 border border-slate-200 rounded resize-none focus:outline-none focus:ring-1 focus:ring-orange-300 focus:bg-white placeholder-slate-300"
                           />
                           
-                          {/* Aktions-Buttons - sichtbar bei Hover */}
-                          <div className="flex items-center justify-between gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {/* Aktions-Buttons - sichtbar bei Hover ODER bei Touch-Aktivierung auf Mobile */}
+                          <div 
+                            className={`flex items-center justify-between gap-0.5 transition-all ${
+                              isTouchActive 
+                                ? 'opacity-100 pointer-events-auto' 
+                                : isMobileDevice 
+                                  ? 'opacity-0 pointer-events-none' 
+                                  : 'opacity-0 group-hover:opacity-100 pointer-events-auto'
+                            }`}
+                            onClick={(e) => e.stopPropagation()} // Verhindert Deaktivierung bei Button-Klick
+                          >
                             {/* Links: Hoch/Runter Pfeile zum Verschieben */}
                             <div className="flex gap-1">
                               <button 
@@ -8722,6 +8863,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                       const eintrag = projektMap[projektName];
                       const echterZeilenIndex = projektZuEchterZeile[projektName] ?? zeile;
                       const isDragOverHere = dragOverCell?.dateKey === dateKey && dragOverCell?.zeilenIndex === echterZeilenIndex;
+                      const isTouchActiveMonat = isTouchCellActive(dateKey, echterZeilenIndex, projektName); // MOBILE Touch-First-Tap
                       
                       // Kein Eintrag für dieses Projekt an diesem Tag = leerer Platzhalter (Drop-Zone)
                       if (!eintrag) {
@@ -8836,6 +8978,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                         <div 
                           key={zeile}
                           data-drop-zone={`${dateKey}|${echterZeilenIndex}`}
+                          data-plantafel-cell="true"
                           draggable={!tappedMitarbeiter && !tappedAuftrag}
                           onDragStart={(e) => !tappedMitarbeiter && !tappedAuftrag && handleDragStart(e, eintrag, dateKey, echterZeilenIndex)}
                           onDragOver={(e) => handleDragOver(e, dateKey, echterZeilenIndex)}
@@ -8852,7 +8995,10 @@ function ProjectPlanningModule({ appState, updateState }) {
                               handleTouchEnd(e);
                             }
                           }}
-                          onClick={async () => {
+                          onClick={async (e) => {
+                            // Ignoriere Klicks auf Buttons
+                            if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+                            
                             // TAP & PLACE: Wenn MA ausgewählt, füge ihn zum Projekt hinzu (FORENSISCH SICHER)
                             if (tappedMitarbeiter) {
                               const alteMA = getMitarbeiterFromText(eintrag.text);
@@ -8868,6 +9014,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                                 setTappedMitarbeiter(null); // Auch bei schon drin zurücksetzen
                                 if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
                               }
+                              return;
                             }
                             // TAP & PLACE: Wenn Auftrag ausgewählt, füge ihn hinzu
                             if (tappedAuftrag) {
@@ -8901,13 +9048,20 @@ function ProjectPlanningModule({ appState, updateState }) {
                                 setTappedAuftrag(null); // Auch zurücksetzen
                                 if (navigator.vibrate) navigator.vibrate([20, 10, 20]);
                               }
+                              return;
+                            }
+                            
+                            // MOBILE TOUCH-FIRST-TAP: Erst Buttons zeigen, dann Aktion
+                            if (isMobileDevice && !handleTouchCellTap(dateKey, echterZeilenIndex, projektName)) {
+                              // Erster Tap -> nur Buttons zeigen, keine Aktion
+                              return;
                             }
                           }}
                           className={`group flex items-center h-7 sm:h-6 text-[12px] sm:text-[11px] rounded font-medium transition-all touch-manipulation overflow-visible relative cursor-pointer ${
                             isDragOverHere 
                               ? 'ring-2 ring-green-400 scale-105 bg-green-50' 
                               : 'hover:ring-1 hover:ring-slate-300'
-                          }`}
+                          } ${isTouchActiveMonat ? 'ring-2 ring-orange-400' : ''}`}
                           style={{ 
                             backgroundColor: isDragOverHere ? undefined : getZeilenFarbe(eintrag), 
                             borderLeft: `3px solid ${getZeilenFarbeSolid(eintrag) || '#e2e8f0'}` 
@@ -9017,8 +9171,17 @@ function ProjectPlanningModule({ appState, updateState }) {
                               );
                             })()}
                           </div>
-                          {/* Aktions-Buttons - sichtbar bei Hover */}
-                          <div className="absolute inset-0 flex items-center justify-between px-0.5 bg-white/95 rounded transition-all z-10 opacity-0 group-hover:opacity-100">
+                          {/* Aktions-Buttons - sichtbar bei Hover ODER bei Touch-Aktivierung auf Mobile */}
+                          <div 
+                            className={`absolute inset-0 flex items-center justify-between px-0.5 bg-white/95 rounded transition-all z-10 ${
+                              isTouchActiveMonat 
+                                ? 'opacity-100 pointer-events-auto' 
+                                : isMobileDevice 
+                                  ? 'opacity-0 pointer-events-none' 
+                                  : 'opacity-0 group-hover:opacity-100 pointer-events-auto'
+                            }`}
+                            onClick={(e) => e.stopPropagation()} // Verhindert Deaktivierung bei Button-Klick
+                          >
                             {/* LINKS: Pfeil nach links */}
                             <button 
                               onClick={async (e) => { 
