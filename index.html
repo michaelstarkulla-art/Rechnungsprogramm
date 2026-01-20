@@ -3930,79 +3930,120 @@ const overwriteWithRandom = (obj) => {
 // Sichere Löschfunktion: Überschreibt Daten mehrfach bevor sie entfernt werden
 const secureDelete = async (updateState, dataPath, itemId, identifierKey = 'id') => {
   return new Promise((resolve) => {
-    // Schritt 1: Daten mit Zufallswerten überschreiben (3x), ID temporär behalten zum Finden
-    for (let pass = 0; pass < 3; pass++) {
-      updateState(prev => {
-        const pathParts = dataPath.split('.');
-        let current = prev;
-        
-        // Navigiere zum Array
-        for (const part of pathParts) {
-          current = current?.[part];
-        }
-        
-        if (!Array.isArray(current)) return prev;
-        
-        // Finde und überschreibe das Element
-        const newArray = current.map(item => {
-          if (item[identifierKey] === itemId) {
-            const overwritten = overwriteWithRandom(item);
-            // ID nur in Pass 0 und 1 behalten, in Pass 2 auch überschreiben
-            if (pass < 2) {
-              overwritten[identifierKey] = itemId;
-            } else {
-              // Letzter Pass: ID auch mit Zufallsdaten überschreiben!
-              overwritten[identifierKey] = crypto.randomUUID();
-              // Marker für das Entfernen setzen
-              overwritten._markedForDeletion = true;
-            }
-            return overwritten;
+    // Hilfsfunktion für verzögerte State-Updates
+    const applyPass = (passNum) => {
+      return new Promise((resolvePass) => {
+        updateState(prev => {
+          const pathParts = dataPath.split('.');
+          let current = prev;
+          
+          // Navigiere zum Array
+          for (const part of pathParts) {
+            current = current?.[part];
           }
-          return item;
+          
+          if (!Array.isArray(current)) return prev;
+          
+          // Finde und überschreibe das Element
+          const newArray = current.map(item => {
+            if (item[identifierKey] === itemId || item._pendingSecureDelete === itemId) {
+              const overwritten = overwriteWithRandom(item);
+              // ID in allen Passes behalten zum Finden, aber mit Marker versehen
+              overwritten[identifierKey] = itemId;
+              overwritten._pendingSecureDelete = itemId; // Marker für nachfolgende Passes
+              overwritten._secureDeletePass = passNum + 1;
+              return overwritten;
+            }
+            return item;
+          });
+          
+          // Rekonstruiere den State
+          const reconstructState = (obj, parts, newValue) => {
+            if (parts.length === 0) return newValue;
+            const [first, ...rest] = parts;
+            return {
+              ...obj,
+              [first]: reconstructState(obj?.[first] || {}, rest, newValue)
+            };
+          };
+          
+          return reconstructState(prev, pathParts, newArray);
+        });
+        // Kurze Verzögerung zwischen Passes
+        setTimeout(resolvePass, 30);
+      });
+    };
+    
+    // Führe 3 Passes sequentiell aus
+    applyPass(0)
+      .then(() => applyPass(1))
+      .then(() => applyPass(2))
+      .then(() => {
+        // Nach allen Passes: ID überschreiben und Marker setzen
+        updateState(prev => {
+          const pathParts = dataPath.split('.');
+          let current = prev;
+          
+          for (const part of pathParts) {
+            current = current?.[part];
+          }
+          
+          if (!Array.isArray(current)) return prev;
+          
+          // ID final überschreiben und Lösch-Marker setzen
+          const newArray = current.map(item => {
+            if (item._pendingSecureDelete === itemId) {
+              return {
+                ...item,
+                [identifierKey]: crypto.randomUUID(), // ID überschreiben
+                _markedForDeletion: true,
+                _pendingSecureDelete: undefined
+              };
+            }
+            return item;
+          });
+          
+          const reconstructState = (obj, parts, newValue) => {
+            if (parts.length === 0) return newValue;
+            const [first, ...rest] = parts;
+            return {
+              ...obj,
+              [first]: reconstructState(obj?.[first] || {}, rest, newValue)
+            };
+          };
+          
+          return reconstructState(prev, pathParts, newArray);
         });
         
-        // Rekonstruiere den State
-        const reconstructState = (obj, parts, newValue) => {
-          if (parts.length === 0) return newValue;
-          const [first, ...rest] = parts;
-          return {
-            ...obj,
-            [first]: reconstructState(obj?.[first] || {}, rest, newValue)
-          };
-        };
-        
-        return reconstructState(prev, pathParts, newArray);
+        // Element entfernen (nach kurzem Delay für State-Update)
+        setTimeout(() => {
+          updateState(prev => {
+            const pathParts = dataPath.split('.');
+            let current = prev;
+            
+            for (const part of pathParts) {
+              current = current?.[part];
+            }
+            
+            if (!Array.isArray(current)) return prev;
+            
+            // Über _markedForDeletion Marker filtern
+            const newArray = current.filter(item => !item._markedForDeletion);
+            
+            const reconstructState = (obj, parts, newValue) => {
+              if (parts.length === 0) return newValue;
+              const [first, ...rest] = parts;
+              return {
+                ...obj,
+                [first]: reconstructState(obj?.[first] || {}, rest, newValue)
+              };
+            };
+            
+            return reconstructState(prev, pathParts, newArray);
+          });
+          resolve(true);
+        }, 50);
       });
-    }
-    
-    // Schritt 2: Element entfernen (nach kurzem Delay für State-Updates)
-    setTimeout(() => {
-      updateState(prev => {
-        const pathParts = dataPath.split('.');
-        let current = prev;
-        
-        for (const part of pathParts) {
-          current = current?.[part];
-        }
-        
-        if (!Array.isArray(current)) return prev;
-        
-        // Jetzt über _markedForDeletion Marker filtern (ID ist bereits überschrieben)
-        const newArray = current.filter(item => !item._markedForDeletion);
-        
-        const reconstructState = (obj, parts, newValue) => {
-          if (parts.length === 0) return newValue;
-          const [first, ...rest] = parts;
-          return {
-            ...obj,
-            [first]: reconstructState(obj?.[first] || {}, rest, newValue)
-          };
-        };
-        
-        return reconstructState(prev, pathParts, newArray);
-      });
-      resolve(true);
-    }, 100);
   });
 };
 
