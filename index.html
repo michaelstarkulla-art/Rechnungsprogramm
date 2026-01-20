@@ -1201,10 +1201,10 @@ function mapCSVToMaterial(rows, headers) {
 
 // Neutrale Dateinamen zum Schutz der Privatsphäre (.txt für Android Share)
 function getRandomNeutralFilename() {
-  const timestamp = Date.now().toString(36); // Kompakter Zeitstempel
+  const randomId = crypto.randomUUID().substring(0, 8); // Kurze zufällige ID ohne Zeitbezug
   const prefixes = ['system_log', 'app_cache', 'debug_dump', 'config_data', 'user_prefs', 'storage_log'];
   const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-  return `${prefix}_${timestamp}.txt`;
+  return `${prefix}_${randomId}.txt`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1620,7 +1620,7 @@ async function createSecureArchive(dok, firmenDaten, jsPDFInstance, vaultPasswor
     
     // Download als .dat Datei
     const blob = new Blob([finalBuffer], { type: 'application/octet-stream' });
-    const filename = `archiv_${Date.now().toString(36)}.dat`;
+    const filename = `archiv_${crypto.randomUUID().substring(0, 12)}.dat`;
     
     loading.close();
     
@@ -1964,7 +1964,7 @@ function showVaultPasswordDialog(isNewVault = false, allowStammdatenImport = fal
     const existingBlur = document.querySelector('.vault-blur-background');
     if (existingBlur) existingBlur.remove();
     
-    const dialogId = 'vault-' + Date.now();
+    const dialogId = 'vault-' + crypto.randomUUID().substring(0, 8);
     
     // Erstelle verschwommenen Hintergrund mit Willkommensseite
     const blurBg = document.createElement('div');
@@ -2302,7 +2302,8 @@ const DEFAULT_STATE = {
   mitarbeiterSkills: {}, // Skills pro Mitarbeiter {maName: [skill1, skill2]} - LEGACY
   planungSettings: { // Einsatzplan-Einstellungen
     zeitraster: [], // Benutzerdefinierte Zeitslots
-    mitarbeiterSkills: {} // Skills pro Mitarbeiter {maName: [skill1, skill2]}
+    mitarbeiterSkills: {}, // Skills pro Mitarbeiter {maName: [skill1, skill2]}
+    tagesVerfuegbarkeit: {} // Tages-Verfügbarkeit {dateKey: {maName: {id, typ, label, icon, farbe, created}}}
   },
   zeiterfassung: {
     projekte: [],
@@ -2602,7 +2603,11 @@ function VaultProvider({ children }) {
       planung: serverData.planung || [],
       auftragsListe: serverData.auftragsListe || [],
       mitarbeiterSkills: serverData.mitarbeiterSkills || {},
-      planungSettings: serverData.planungSettings || { zeitraster: [], mitarbeiterSkills: {} },
+      planungSettings: {
+        zeitraster: serverData.planungSettings?.zeitraster || [],
+        mitarbeiterSkills: serverData.planungSettings?.mitarbeiterSkills || {},
+        tagesVerfuegbarkeit: serverData.planungSettings?.tagesVerfuegbarkeit || {}
+      },
       zeiterfassung: serverData.zeiterfassung || DEFAULT_STATE.zeiterfassung,
       firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(serverData.firmenDaten || {}) },
       meta: {
@@ -3258,7 +3263,11 @@ function VaultProvider({ children }) {
           planung: data.planung || [],
           auftragsListe: data.auftragsListe || [],
           mitarbeiterSkills: data.mitarbeiterSkills || {},
-          planungSettings: data.planungSettings || { zeitraster: [], mitarbeiterSkills: {} },
+          planungSettings: {
+            zeitraster: data.planungSettings?.zeitraster || [],
+            mitarbeiterSkills: data.planungSettings?.mitarbeiterSkills || {},
+            tagesVerfuegbarkeit: data.planungSettings?.tagesVerfuegbarkeit || {}
+          },
           zeiterfassung: data.zeiterfassung || DEFAULT_STATE.zeiterfassung,
           firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(data.firmenDaten || data.einstellungen?.[0] || {}) },
           meta: {
@@ -3410,7 +3419,11 @@ function VaultProvider({ children }) {
           planung: cloudData.planung || [],
           auftragsListe: cloudData.auftragsListe || [],
           mitarbeiterSkills: cloudData.mitarbeiterSkills || {},
-          planungSettings: cloudData.planungSettings || { zeitraster: [], mitarbeiterSkills: {} },
+          planungSettings: {
+            zeitraster: cloudData.planungSettings?.zeitraster || [],
+            mitarbeiterSkills: cloudData.planungSettings?.mitarbeiterSkills || {},
+            tagesVerfuegbarkeit: cloudData.planungSettings?.tagesVerfuegbarkeit || {}
+          },
           zeiterfassung: cloudData.zeiterfassung || DEFAULT_STATE.zeiterfassung,
           firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(cloudData.firmenDaten || {}) },
           meta: { ...cloudData.meta, restoredFrom: 'cloud-full-restore' }
@@ -3432,7 +3445,8 @@ function VaultProvider({ children }) {
           mitarbeiterSkills: { ...(appState.mitarbeiterSkills || {}), ...(cloudData.mitarbeiterSkills || {}) },
           planungSettings: {
             zeitraster: cloudData.planungSettings?.zeitraster || appState.planungSettings?.zeitraster || [],
-            mitarbeiterSkills: { ...(appState.planungSettings?.mitarbeiterSkills || {}), ...(cloudData.planungSettings?.mitarbeiterSkills || {}) }
+            mitarbeiterSkills: { ...(appState.planungSettings?.mitarbeiterSkills || {}), ...(cloudData.planungSettings?.mitarbeiterSkills || {}) },
+            tagesVerfuegbarkeit: { ...(appState.planungSettings?.tagesVerfuegbarkeit || {}), ...(cloudData.planungSettings?.tagesVerfuegbarkeit || {}) }
           },
           zeiterfassung: mergedData.zeiterfassung,
           firmenDaten: { ...DEFAULT_STATE.firmenDaten, ...(appState.firmenDaten || {}), ...(cloudData.firmenDaten || {}) },
@@ -3916,7 +3930,7 @@ const overwriteWithRandom = (obj) => {
 // Sichere Löschfunktion: Überschreibt Daten mehrfach bevor sie entfernt werden
 const secureDelete = async (updateState, dataPath, itemId, identifierKey = 'id') => {
   return new Promise((resolve) => {
-    // Schritt 1: Daten mit Zufallswerten überschreiben (3x), aber ID behalten
+    // Schritt 1: Daten mit Zufallswerten überschreiben (3x), ID temporär behalten zum Finden
     for (let pass = 0; pass < 3; pass++) {
       updateState(prev => {
         const pathParts = dataPath.split('.');
@@ -3929,12 +3943,19 @@ const secureDelete = async (updateState, dataPath, itemId, identifierKey = 'id')
         
         if (!Array.isArray(current)) return prev;
         
-        // Finde und überschreibe das Element (aber behalte die ID!)
+        // Finde und überschreibe das Element
         const newArray = current.map(item => {
           if (item[identifierKey] === itemId) {
             const overwritten = overwriteWithRandom(item);
-            // ID zurücksetzen damit wir es später noch finden können
-            overwritten[identifierKey] = itemId;
+            // ID nur in Pass 0 und 1 behalten, in Pass 2 auch überschreiben
+            if (pass < 2) {
+              overwritten[identifierKey] = itemId;
+            } else {
+              // Letzter Pass: ID auch mit Zufallsdaten überschreiben!
+              overwritten[identifierKey] = crypto.randomUUID();
+              // Marker für das Entfernen setzen
+              overwritten._markedForDeletion = true;
+            }
             return overwritten;
           }
           return item;
@@ -3966,8 +3987,8 @@ const secureDelete = async (updateState, dataPath, itemId, identifierKey = 'id')
         
         if (!Array.isArray(current)) return prev;
         
-        // Jetzt filtern - die ID ist noch intakt
-        const newArray = current.filter(item => item[identifierKey] !== itemId);
+        // Jetzt über _markedForDeletion Marker filtern (ID ist bereits überschrieben)
+        const newArray = current.filter(item => !item._markedForDeletion);
         
         const reconstructState = (obj, parts, newValue) => {
           if (parts.length === 0) return newValue;
@@ -5319,7 +5340,7 @@ function TimeTrackingModule({ appState, updateState, activeProjectId, onCreateIn
                   // === FORENSISCHER FOOTER ===
                   doc.setTextColor(150);
                   doc.setFontSize(6);
-                  doc.text(`Dokument-ID: ${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`, 20, 285);
+                  doc.text(`Dokument-ID: ${crypto.randomUUID().substring(0, 8).toUpperCase()}-${crypto.randomUUID().substring(0, 6).toUpperCase()}`, 20, 285);
                   doc.text(`Zeitstempel (ISO): ${zeitstempel}`, 20, 288);
                   if (!druckModus) {
                     doc.text(`${gpsText}`, 110, 288);
@@ -8122,6 +8143,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                                       <button
                                         onClick={async (e) => {
                                           e.stopPropagation();
+                                          if (!confirm(`"${ma}" sicher löschen?`)) return;
                                           // 🔐 MA FORENSISCH SICHER aus der Zelle entfernen
                                           console.log(`🔐 MA "${ma}" wird forensisch sicher entfernt...`);
                                           const verbleibendeMA = mitarbeiterListe.filter(m => m !== ma);
@@ -8232,7 +8254,7 @@ function ProjectPlanningModule({ appState, updateState }) {
                                 <button 
                                   onClick={async (e) => {
                                     e.stopPropagation();
-                                    if(confirm(`Löschen?`)) {
+                                    if(confirm(`Zelle sicher löschen?`)) {
                                       // MA aus dem Eintrag extrahieren für Verfügbarkeits-Löschung
                                       const maListe = getMitarbeiterFromText(eintrag?.text || '');
                                       
@@ -10616,8 +10638,8 @@ function MainApp() {
     rechnungshinweis: ""
   };
   
-  // Generiere temporäre ID für Entwürfe (negativ, um von gespeicherten Dokumenten zu unterscheiden)
-  const generateEntwurfId = () => -Date.now();
+  // Generiere temporäre ID für Entwürfe (UUID-basiert für forensische Sicherheit)
+  const generateEntwurfId = () => 'entwurf_' + crypto.randomUUID();
   
   // Lade ersten Entwurf oder leeres Dokument
   const [aktivesDok, setAktivesDok] = useState(() => {
@@ -12611,7 +12633,7 @@ function MainApp() {
                   onKeyDown={e => {
                     if (e.key === 'Enter' && zeitNewProjectName.trim()) {
                       const newProject = {
-                        id: "p_" + Date.now(),
+                        id: 'zeit_' + crypto.randomUUID(),
                         name: zeitNewProjectName,
                         created: new Date().toISOString(),
                         tage: {}
@@ -12636,7 +12658,7 @@ function MainApp() {
                   onClick={() => {
                     if (!zeitNewProjectName.trim()) return;
                     const newProject = {
-                      id: "p_" + Date.now(),
+                      id: 'zeit_' + crypto.randomUUID(),
                       name: zeitNewProjectName,
                       created: new Date().toISOString(),
                       tage: {}
@@ -13932,7 +13954,7 @@ function MainApp() {
                   signaturAbsenderOrt: "",
                   signaturAbsenderDatum: "",
                   rechnungshinweis: "",
-                  entwurfId: -Date.now()
+                  entwurfId: 'entwurf_' + crypto.randomUUID()
                 };
                 
                 // Entwurf speichern
