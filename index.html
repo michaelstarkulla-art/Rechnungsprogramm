@@ -2993,21 +2993,30 @@ function VaultProvider({ children }) {
         }
       }
       
-      // WICHTIG: Server-Timestamp lokal speichern!
+      // WICHTIG: Server-Timestamp lokal speichern
+      // Nach erfolgreichem Upload ist das Gerät IMMER synchronisiert (initialSyncDone = true)
+      const existingMeta = JSON.parse(localStorage.getItem('smartsync_server_timestamp') || '{}');
       if (serverTimestamp) {
         localStorage.setItem('smartsync_server_timestamp', JSON.stringify({
           lastServerTimestamp: serverTimestamp,
-          lastSyncAt: new Date().toISOString()
+          lastSyncAt: new Date().toISOString(),
+          // Nach erfolgreichem Upload: Gerät ist SYNCHRONISIERT!
+          initialSyncDone: true,
+          // syncedFromCloud bleibt erhalten (nur true wenn Daten VON Cloud geladen wurden)
+          syncedFromCloud: existingMeta.syncedFromCloud || false
         }));
-        console.log('☁️ Server-Timestamp gespeichert:', serverTimestamp);
+        console.log('☁️ Server-Timestamp gespeichert:', serverTimestamp, 'initialSyncDone: true (nach Upload)');
       } else {
         // Fallback: Aktuelle Zeit als geschätzten Timestamp speichern
         const estimatedTimestamp = Date.now();
         localStorage.setItem('smartsync_server_timestamp', JSON.stringify({
           lastServerTimestamp: estimatedTimestamp,
-          lastSyncAt: new Date().toISOString()
+          lastSyncAt: new Date().toISOString(),
+          // Nach erfolgreichem Upload: Gerät ist SYNCHRONISIERT!
+          initialSyncDone: true,
+          syncedFromCloud: existingMeta.syncedFromCloud || false
         }));
-        console.log('☁️ Geschätzter Timestamp gespeichert:', estimatedTimestamp);
+        console.log('☁️ Geschätzter Timestamp gespeichert:', estimatedTimestamp, 'initialSyncDone: true (nach Upload)');
       }
       
       console.log('☁️ Cloud-Sync erfolgreich!');
