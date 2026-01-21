@@ -2640,7 +2640,18 @@ function VaultProvider({ children }) {
     console.log('📦 [SmartSync] Blob heruntergeladen:', encryptedBuffer.byteLength, 'Bytes');
     
     // 2. Entschlüsseln
-    let serverData = await workerDecrypt(encryptedBuffer, SecureVault.encryptionKey, true);
+    let serverData;
+    try {
+      serverData = await workerDecrypt(encryptedBuffer, SecureVault.encryptionKey, true);
+    } catch (decryptError) {
+      console.error('🔐 [SmartSync] Entschlüsselung fehlgeschlagen:', decryptError);
+      throw new Error(
+        'Entschlüsselung fehlgeschlagen!\n\n' +
+        '⚠️ Das Passwort auf diesem Gerät stimmt nicht mit dem Passwort überein, ' +
+        'das zur Verschlüsselung der Cloud-Daten verwendet wurde.\n\n' +
+        '💡 Lösung: Verwende auf ALLEN Geräten dasselbe Passwort.'
+      );
+    }
     
     // Wrapper entfernen falls vorhanden
     if (serverData && serverData.f === 'fsb' && serverData.d) {
@@ -3489,7 +3500,7 @@ function VaultProvider({ children }) {
     setCloudConfig(prev => ({ ...prev, ...newConfig }));
   }, []);
   
-  // Manueller Cloud-Sync auslösen - JETZT MIT SMARTSYNC (Last Write Wins)
+  // Manueller Cloud-Sync auslösen - MIT FIRST-CONNECT PROTECTION
   const triggerCloudSync = useCallback(async () => {
     if (!SecureVault.encryptionKey) {
       console.warn('Vault nicht entsperrt');
@@ -3501,6 +3512,34 @@ function VaultProvider({ children }) {
       console.log('   License Key:', cloudConfig.licenseKey ? '✓ vorhanden (' + cloudConfig.licenseKey.substring(0, 4) + '...)' : '✗ fehlt');
       console.log('   Worker URL:', cloudConfig.workerUrl);
       
+      // ════════════════════════════════════════════════════════════════
+      // FIRST-CONNECT PROTECTION für manuelle Uploads
+      // ════════════════════════════════════════════════════════════════
+      const syncMeta = getLocalSyncMeta();
+      
+      if (!syncMeta.initialSyncDone) {
+        // Prüfe ob Cloud-Daten existieren
+        const headResult = await performHeadCheck();
+        
+        if (headResult.exists) {
+          // BLOCKIEREN! Cloud hat Daten, aber dieses Gerät wurde nie synchronisiert
+          console.warn('🛡️ [First-Connect Protection] Upload BLOCKIERT!');
+          console.warn('   Grund: Cloud hat Daten, aber dieses Gerät wurde nie synchronisiert.');
+          
+          alert(
+            '🛡️ UPLOAD BLOCKIERT - Datenschutz!\n\n' +
+            'Es existieren bereits Daten in der Cloud, aber dieses Gerät wurde noch nie synchronisiert.\n\n' +
+            'Ein Upload würde die Cloud-Daten überschreiben!\n\n' +
+            '💡 Lösung:\n' +
+            'Klicke auf "Aus Cloud wiederherstellen" um zuerst die bestehenden Daten zu laden.'
+          );
+          return;
+        }
+      }
+      
+      // ════════════════════════════════════════════════════════════════
+      // Normaler Sync (wenn Protection nicht greift)
+      // ════════════════════════════════════════════════════════════════
       const result = await syncAndSave();
       
       // Feedback für den User
@@ -3508,6 +3547,7 @@ function VaultProvider({ children }) {
         alert('☁️ Neuere Daten vom Server geladen!\n\nDein lokaler Stand wurde mit dem Server-Stand überschrieben.');
       } else if (result.action === 'uploaded') {
         console.log('✅ Daten erfolgreich zum Server hochgeladen');
+        alert('✅ Daten erfolgreich in die Cloud hochgeladen!');
       }
       
     } catch (err) {
@@ -3523,7 +3563,7 @@ function VaultProvider({ children }) {
       }
       alert(errorMsg);
     }
-  }, [syncAndSave, cloudConfig]);
+  }, [syncAndSave, cloudConfig, getLocalSyncMeta, performHeadCheck]);
   
   // Cloud-Restore: Backup aus Cloud wiederherstellen
   const restoreFromCloud = useCallback(async () => {
